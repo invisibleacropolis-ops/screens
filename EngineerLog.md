@@ -15,3 +15,18 @@
 **Remaining TODO**:
 - Implement actual visual effects (currently just a demo triangle).
 - Add configuration dialog logic (currently a stub).
+
+**Update**: Installed GitHub CLI (`gh`), authenticated, and pushed repository to `https://github.com/invisibleacropolis-ops/screens`.
+
+**Task**: Real-Time Metrics & Visualization
+**Changes**:
+- Implemented `SystemMonitor` class using Windows PDH API to read CPU, Disk, and Memory usage.
+- Implemented `renderer.cpp` visuals:
+    - **CPU**: Pulsing red/blue wireframe sphere.
+    - **RAM**: 10x10 Grid of cubes that fill up based on memory load.
+    - **Disk**: Glowing ring orbiting the CPU.
+- Verified build with `pdh.lib`.
+**Completion %**: 100% (Core Metrics), 50% (Network metric is stubbed)
+**Remaining TODO**:
+- Implement complex Network Interface aggregation (currently stubbed).
+- Polish visual aesthetics (add shaders, better lighting).

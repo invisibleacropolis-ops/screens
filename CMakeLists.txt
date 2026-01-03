@@ -8,6 +8,8 @@ set(SOURCES
     src/main.cpp
     src/renderer.cpp
     src/renderer.h
+    src/SystemMonitor.cpp
+    src/SystemMonitor.h
 )
 
 add_executable(ScreenSaver WIN32 ${SOURCES})
@@ -16,6 +18,7 @@ add_executable(ScreenSaver WIN32 ${SOURCES})
 target_link_libraries(ScreenSaver PRIVATE
     opengl32
     glu32
+    pdh
 )
 
 # Rename executable to .scr for screensaver functionality
