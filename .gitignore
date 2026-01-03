@@ -1,0 +1,17 @@
+# CMake build
+build/
+out/
+cmake-build-*/
+.vs/
+*.user
+
+# Binary output
+*.exe
+*.scr
+*.lib
+*.pdb
+*.obj
+*.ilk
+
+# Artifacts
+.gemini/
