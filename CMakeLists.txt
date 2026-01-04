@@ -8,6 +8,8 @@ set(SOURCES
     src/main.cpp
     src/renderer.cpp
     src/renderer.h
+    src/Shader.cpp
+    src/Shader.h
     src/glad/glad.c
     src/glad/glad.h
     src/SystemMonitor.cpp

@@ -1,5 +1,8 @@
 #include "renderer.h"
-#include <math.h>
+#include "Shader.h"
+#include <array>
+#include <cmath>
+#include <cstring>
 #include <vector>
 
 #ifndef WGL_CONTEXT_MAJOR_VERSION_ARB
@@ -67,7 +70,39 @@ HGLRC hRC = NULL;
 HDC hDC = NULL;
 SystemMonitor *sysMon = nullptr;
 
-GLUquadricObj *quadric = nullptr;
+struct Vec3 {
+  float x;
+  float y;
+  float z;
+};
+
+struct Mat4 {
+  std::array<float, 16> m;
+};
+
+struct Mesh {
+  GLuint vao = 0;
+  GLuint vbo = 0;
+  GLuint ebo = 0;
+  GLsizei indexCount = 0;
+  GLsizei vertexCount = 0;
+  bool indexed = false;
+};
+
+Shader *gShader = nullptr;
+GLuint gSceneUbo = 0;
+Mesh gCubeMesh;
+Mesh gSphereMesh;
+Mesh gRingMesh;
+static constexpr float kPi = 3.14159265358979323846f;
+Mat4 gSceneTransform{};
+
+struct SceneUniforms {
+  float view[16];
+  float proj[16];
+  float lightDir[3];
+  float ambient;
+};
 
 static bool LoadWGLExtensions() {
   if (wglCreateContextAttribsARB && wglChoosePixelFormatARB) {
@@ -245,6 +280,325 @@ static HGLRC CreateCompatibilityContext(HDC dc, int major, int minor) {
   return wglCreateContextAttribsARB(dc, 0, attribs);
 }
 
+static Vec3 Vec3Sub(const Vec3 &a, const Vec3 &b) {
+  return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
+
+static Vec3 Vec3Cross(const Vec3 &a, const Vec3 &b) {
+  return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z,
+          a.x * b.y - a.y * b.x};
+}
+
+static Vec3 Vec3Normalize(const Vec3 &v) {
+  float len = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+  if (len == 0.0f) {
+    return {0.0f, 0.0f, 0.0f};
+  }
+  return {v.x / len, v.y / len, v.z / len};
+}
+
+static Mat4 Mat4Identity() {
+  Mat4 out{};
+  out.m = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+           0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+  return out;
+}
+
+static Mat4 Mat4Multiply(const Mat4 &a, const Mat4 &b) {
+  Mat4 out{};
+  for (int col = 0; col < 4; ++col) {
+    for (int row = 0; row < 4; ++row) {
+      out.m[row + col * 4] =
+          a.m[row + 0] * b.m[col * 4 + 0] +
+          a.m[row + 4] * b.m[col * 4 + 1] +
+          a.m[row + 8] * b.m[col * 4 + 2] +
+          a.m[row + 12] * b.m[col * 4 + 3];
+    }
+  }
+  return out;
+}
+
+static Mat4 Mat4Translate(float x, float y, float z) {
+  Mat4 out = Mat4Identity();
+  out.m[12] = x;
+  out.m[13] = y;
+  out.m[14] = z;
+  return out;
+}
+
+static Mat4 Mat4Scale(float x, float y, float z) {
+  Mat4 out = Mat4Identity();
+  out.m[0] = x;
+  out.m[5] = y;
+  out.m[10] = z;
+  return out;
+}
+
+static Mat4 Mat4RotateX(float radians) {
+  Mat4 out = Mat4Identity();
+  float c = std::cos(radians);
+  float s = std::sin(radians);
+  out.m[5] = c;
+  out.m[6] = s;
+  out.m[9] = -s;
+  out.m[10] = c;
+  return out;
+}
+
+static Mat4 Mat4RotateY(float radians) {
+  Mat4 out = Mat4Identity();
+  float c = std::cos(radians);
+  float s = std::sin(radians);
+  out.m[0] = c;
+  out.m[2] = -s;
+  out.m[8] = s;
+  out.m[10] = c;
+  return out;
+}
+
+static Mat4 Mat4RotateZ(float radians) {
+  Mat4 out = Mat4Identity();
+  float c = std::cos(radians);
+  float s = std::sin(radians);
+  out.m[0] = c;
+  out.m[1] = s;
+  out.m[4] = -s;
+  out.m[5] = c;
+  return out;
+}
+
+static Mat4 Mat4Perspective(float fovRadians, float aspect, float nearPlane,
+                            float farPlane) {
+  Mat4 out{};
+  float f = 1.0f / std::tan(fovRadians / 2.0f);
+  out.m = {f / aspect, 0.0f, 0.0f, 0.0f, 0.0f, f, 0.0f, 0.0f,
+           0.0f, 0.0f, (farPlane + nearPlane) / (nearPlane - farPlane), -1.0f,
+           0.0f, 0.0f, (2.0f * farPlane * nearPlane) / (nearPlane - farPlane),
+           0.0f};
+  return out;
+}
+
+static Mat4 Mat4LookAt(const Vec3 &eye, const Vec3 &target, const Vec3 &up) {
+  Vec3 forward = Vec3Normalize(Vec3Sub(target, eye));
+  Vec3 side = Vec3Normalize(Vec3Cross(forward, up));
+  Vec3 upVec = Vec3Cross(side, forward);
+
+  Mat4 out = Mat4Identity();
+  out.m[0] = side.x;
+  out.m[1] = side.y;
+  out.m[2] = side.z;
+  out.m[4] = upVec.x;
+  out.m[5] = upVec.y;
+  out.m[6] = upVec.z;
+  out.m[8] = -forward.x;
+  out.m[9] = -forward.y;
+  out.m[10] = -forward.z;
+  out.m[12] = -(side.x * eye.x + side.y * eye.y + side.z * eye.z);
+  out.m[13] = -(upVec.x * eye.x + upVec.y * eye.y + upVec.z * eye.z);
+  out.m[14] = (forward.x * eye.x + forward.y * eye.y + forward.z * eye.z);
+  return out;
+}
+
+static Mesh CreateCubeMesh() {
+  Mesh mesh{};
+  float vertices[] = {
+      // positions          // normals
+      -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f,  0.5f, -0.5f, 0.5f,
+      0.0f,  0.0f,  1.0f, 0.5f, 0.5f,  0.5f, 0.0f,  0.0f,  1.0f,
+      -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f,  0.5f, 0.5f,  0.5f,
+      0.0f,  0.0f,  1.0f, -0.5f, 0.5f, 0.5f, 0.0f,  0.0f,  1.0f,
+
+      -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, -0.5f, 0.5f,  -0.5f,
+      0.0f,  0.0f,  -1.0f, 0.5f, 0.5f,  -0.5f, 0.0f,  0.0f,  -1.0f,
+      -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.5f,  0.5f,  -0.5f,
+      0.0f,  0.0f,  -1.0f, 0.5f,  -0.5f, -0.5f, 0.0f,  0.0f,  -1.0f,
+
+      -0.5f, 0.5f,  -0.5f, 0.0f, 1.0f, 0.0f,  -0.5f, 0.5f,  0.5f,
+      0.0f,  1.0f,  0.0f, 0.5f,  0.5f,  0.5f, 0.0f,  1.0f,  0.0f,
+      -0.5f, 0.5f,  -0.5f, 0.0f, 1.0f, 0.0f,  0.5f,  0.5f,  0.5f,
+      0.0f,  1.0f,  0.0f, 0.5f,  0.5f,  -0.5f, 0.0f,  1.0f,  0.0f,
+
+      -0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 0.5f,  -0.5f, -0.5f,
+      0.0f,  -1.0f, 0.0f, 0.5f,  -0.5f, 0.5f, 0.0f,  -1.0f, 0.0f,
+      -0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 0.5f,  -0.5f, 0.5f,
+      0.0f,  -1.0f, 0.0f, -0.5f, -0.5f, 0.5f, 0.0f,  -1.0f, 0.0f,
+
+      0.5f,  -0.5f, -0.5f, 1.0f, 0.0f, 0.0f,  0.5f,  0.5f,  -0.5f,
+      1.0f,  0.0f,  0.0f, 0.5f,  0.5f,  0.5f, 1.0f,  0.0f,  0.0f,
+      0.5f,  -0.5f, -0.5f, 1.0f, 0.0f, 0.0f,  0.5f,  0.5f,  0.5f,
+      1.0f,  0.0f,  0.0f, 0.5f,  -0.5f, 0.5f, 1.0f,  0.0f,  0.0f,
+
+      -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f, -0.5f, -0.5f, 0.5f,
+      -1.0f, 0.0f,  0.0f, -0.5f, 0.5f,  0.5f, -1.0f, 0.0f,  0.0f,
+      -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f, -0.5f, 0.5f,  0.5f,
+      -1.0f, 0.0f,  0.0f, -0.5f, 0.5f,  -0.5f, -1.0f, 0.0f,  0.0f};
+
+  glGenVertexArrays(1, &mesh.vao);
+  glGenBuffers(1, &mesh.vbo);
+  glBindVertexArray(mesh.vao);
+  glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
+                        reinterpret_cast<void *>(0));
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
+                        reinterpret_cast<void *>(3 * sizeof(float)));
+  glBindVertexArray(0);
+
+  mesh.vertexCount = static_cast<GLsizei>(sizeof(vertices) /
+                                          (6 * sizeof(float)));
+  mesh.indexed = false;
+  return mesh;
+}
+
+static Mesh CreateSphereMesh(int slices, int stacks) {
+  Mesh mesh{};
+  std::vector<float> vertices;
+  std::vector<unsigned int> indices;
+
+  for (int stack = 0; stack <= stacks; ++stack) {
+    float v = static_cast<float>(stack) / static_cast<float>(stacks);
+    float phi = v * kPi;
+    float cosPhi = std::cos(phi);
+    float sinPhi = std::sin(phi);
+
+    for (int slice = 0; slice <= slices; ++slice) {
+      float u = static_cast<float>(slice) / static_cast<float>(slices);
+      float theta = u * 2.0f * kPi;
+      float cosTheta = std::cos(theta);
+      float sinTheta = std::sin(theta);
+
+      float x = sinPhi * cosTheta;
+      float y = cosPhi;
+      float z = sinPhi * sinTheta;
+
+      vertices.push_back(x);
+      vertices.push_back(y);
+      vertices.push_back(z);
+      vertices.push_back(x);
+      vertices.push_back(y);
+      vertices.push_back(z);
+    }
+  }
+
+  for (int stack = 0; stack < stacks; ++stack) {
+    for (int slice = 0; slice < slices; ++slice) {
+      int first = stack * (slices + 1) + slice;
+      int second = first + slices + 1;
+
+      indices.push_back(first);
+      indices.push_back(second);
+      indices.push_back(first + 1);
+      indices.push_back(second);
+      indices.push_back(second + 1);
+      indices.push_back(first + 1);
+    }
+  }
+
+  glGenVertexArrays(1, &mesh.vao);
+  glGenBuffers(1, &mesh.vbo);
+  glGenBuffers(1, &mesh.ebo);
+
+  glBindVertexArray(mesh.vao);
+  glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
+  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(),
+               GL_STATIC_DRAW);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.ebo);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
+               indices.data(), GL_STATIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
+                        reinterpret_cast<void *>(0));
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
+                        reinterpret_cast<void *>(3 * sizeof(float)));
+  glBindVertexArray(0);
+
+  mesh.indexCount = static_cast<GLsizei>(indices.size());
+  mesh.indexed = true;
+  return mesh;
+}
+
+static Mesh CreateRingMesh(int segments, float innerRadius, float outerRadius) {
+  Mesh mesh{};
+  std::vector<float> vertices;
+  std::vector<unsigned int> indices;
+
+  for (int i = 0; i <= segments; ++i) {
+    float t = static_cast<float>(i) / static_cast<float>(segments);
+    float angle = t * 2.0f * kPi;
+    float c = std::cos(angle);
+    float s = std::sin(angle);
+
+    float innerX = innerRadius * c;
+    float innerY = innerRadius * s;
+    float outerX = outerRadius * c;
+    float outerY = outerRadius * s;
+
+    vertices.insert(vertices.end(),
+                    {innerX, innerY, 0.0f, 0.0f, 0.0f, 1.0f});
+    vertices.insert(vertices.end(),
+                    {outerX, outerY, 0.0f, 0.0f, 0.0f, 1.0f});
+  }
+
+  for (int i = 0; i < segments; ++i) {
+    unsigned int start = i * 2;
+    indices.push_back(start);
+    indices.push_back(start + 1);
+    indices.push_back(start + 2);
+    indices.push_back(start + 1);
+    indices.push_back(start + 3);
+    indices.push_back(start + 2);
+  }
+
+  glGenVertexArrays(1, &mesh.vao);
+  glGenBuffers(1, &mesh.vbo);
+  glGenBuffers(1, &mesh.ebo);
+
+  glBindVertexArray(mesh.vao);
+  glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
+  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(),
+               GL_STATIC_DRAW);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.ebo);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
+               indices.data(), GL_STATIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
+                        reinterpret_cast<void *>(0));
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
+                        reinterpret_cast<void *>(3 * sizeof(float)));
+  glBindVertexArray(0);
+
+  mesh.indexCount = static_cast<GLsizei>(indices.size());
+  mesh.indexed = true;
+  return mesh;
+}
+
+static void DestroyMesh(Mesh &mesh) {
+  if (mesh.ebo) {
+    glDeleteBuffers(1, &mesh.ebo);
+  }
+  if (mesh.vbo) {
+    glDeleteBuffers(1, &mesh.vbo);
+  }
+  if (mesh.vao) {
+    glDeleteVertexArrays(1, &mesh.vao);
+  }
+  mesh = {};
+}
+
+static void DrawMesh(const Mesh &mesh) {
+  glBindVertexArray(mesh.vao);
+  if (mesh.indexed) {
+    glDrawElements(GL_TRIANGLES, mesh.indexCount, GL_UNSIGNED_INT, nullptr);
+  } else {
+    glDrawArrays(GL_TRIANGLES, 0, mesh.vertexCount);
+  }
+  glBindVertexArray(0);
+}
+
 void InitOpenGL(HWND hwnd) {
   hDC = GetDC(hwnd);
 
@@ -280,96 +634,71 @@ void InitOpenGL(HWND hwnd) {
   }
 
   glEnable(GL_DEPTH_TEST);
-  glEnable(GL_LIGHTING);
-  glEnable(GL_LIGHT0);
-  glEnable(GL_COLOR_MATERIAL);
 
   if (srgbEnabled) {
     glEnable(GL_FRAMEBUFFER_SRGB);
   }
 
-  // Light Setup
-  GLfloat light_pos[] = {10.0f, 10.0f, 10.0f, 0.0f};
-  glLightfv(GL_LIGHT0, GL_POSITION, light_pos);
-  GLfloat light_amb[] = {0.2f, 0.2f, 0.2f, 1.0f};
-  glLightfv(GL_LIGHT0, GL_AMBIENT, light_amb);
+  gShader = new Shader("assets/shaders/basic.vert", "assets/shaders/basic.frag");
+
+  glGenBuffers(1, &gSceneUbo);
+  glBindBuffer(GL_UNIFORM_BUFFER, gSceneUbo);
+  glBufferData(GL_UNIFORM_BUFFER, sizeof(SceneUniforms), nullptr,
+               GL_DYNAMIC_DRAW);
+  glBindBuffer(GL_UNIFORM_BUFFER, 0);
+  glBindBufferRange(GL_UNIFORM_BUFFER, 0, gSceneUbo, 0,
+                    sizeof(SceneUniforms));
+
+  if (gShader && gShader->IsValid()) {
+    gShader->Use();
+    gShader->BindUniformBlock("SceneData", 0);
+  }
 
   sysMon = new SystemMonitor();
   sysMon->Initialize();
 
-  quadric = gluNewQuadric();
+  gCubeMesh = CreateCubeMesh();
+  gSphereMesh = CreateSphereMesh(32, 16);
+  gRingMesh = CreateRingMesh(64, 2.0f, 2.2f);
 }
 
-void DrawCube(float size) {
-  float h = size / 2.0f;
-  glBegin(GL_QUADS);
-  // Front
-  glNormal3f(0.0f, 0.0f, 1.0f);
-  glVertex3f(-h, -h, h);
-  glVertex3f(h, -h, h);
-  glVertex3f(h, h, h);
-  glVertex3f(-h, h, h);
-  // Back
-  glNormal3f(0.0f, 0.0f, -1.0f);
-  glVertex3f(-h, -h, -h);
-  glVertex3f(-h, h, -h);
-  glVertex3f(h, h, -h);
-  glVertex3f(h, -h, -h);
-  // Top
-  glNormal3f(0.0f, 1.0f, 0.0f);
-  glVertex3f(-h, h, -h);
-  glVertex3f(-h, h, h);
-  glVertex3f(h, h, h);
-  glVertex3f(h, h, -h);
-  // Bottom
-  glNormal3f(0.0f, -1.0f, 0.0f);
-  glVertex3f(-h, -h, -h);
-  glVertex3f(h, -h, -h);
-  glVertex3f(h, -h, h);
-  glVertex3f(-h, -h, h);
-  // Right
-  glNormal3f(1.0f, 0.0f, 0.0f);
-  glVertex3f(h, -h, -h);
-  glVertex3f(h, h, -h);
-  glVertex3f(h, h, h);
-  glVertex3f(h, -h, h);
-  // Left
-  glNormal3f(-1.0f, 0.0f, 0.0f);
-  glVertex3f(-h, -h, -h);
-  glVertex3f(-h, -h, h);
-  glVertex3f(-h, h, h);
-  glVertex3f(-h, h, -h);
-  glEnd();
+void DrawCube(float size, float r, float g, float b) {
+  if (!gShader || !gShader->IsValid()) {
+    return;
+  }
+
+  Mat4 model = Mat4Multiply(gSceneTransform, Mat4Scale(size, size, size));
+  gShader->Use();
+  gShader->SetMat4("uModel", model.m.data());
+  gShader->SetVec3("uColor", r, g, b);
+  DrawMesh(gCubeMesh);
 }
 
 // CPU Visualization: A pulsing sphere
 void DrawCPU(float usage) {
-  glPushMatrix();
-  // Normalize usage 0.0 - 1.0
   float u = usage / 100.0f;
 
-  // Color: Blue (Low) -> Red (High)
-  glColor3f(u, 0.2f, 1.0f - u);
-
-  // Pulse scale: Small (Low) -> Large (High) + heartbeat
   static float pulse = 0.0f;
-  pulse += 0.1f + (u * 0.5f); // Beat faster with load
-  float scale = 1.0f + (u * 0.5f) + (sin(pulse) * 0.1f);
+  pulse += 0.1f + (u * 0.5f);
+  float scale = 1.0f + (u * 0.5f) + (std::sin(pulse) * 0.1f);
 
-  glScalef(scale, scale, scale);
-
-  if (quadric) {
-    gluSphere(quadric, 1.0f, 32, 32);
+  if (!gShader || !gShader->IsValid()) {
+    return;
   }
-  glPopMatrix();
+
+  Mat4 model = Mat4Multiply(gSceneTransform, Mat4Scale(scale, scale, scale));
+  gShader->Use();
+  gShader->SetMat4("uModel", model.m.data());
+  gShader->SetVec3("uColor", u, 0.2f, 1.0f - u);
+  DrawMesh(gSphereMesh);
 }
 
 // RAM Visualization: A grid of cubes that fills up
 void DrawRAM(float usage) {
-  glPushMatrix();
-  glTranslatef(0.0f, -2.5f, 0.0f); // Move below CPU
+  if (!gShader || !gShader->IsValid()) {
+    return;
+  }
 
-  // 10x10 Grid
   float u = usage / 100.0f; // 0..1
   int totalCubes = 100;
   int litCubes = (int)(u * 100);
@@ -381,45 +710,46 @@ void DrawRAM(float usage) {
   for (int z = 0; z < 10; z++) {
     for (int x = 0; x < 10; x++) {
       int idx = z * 10 + x;
-      glPushMatrix();
-      glTranslatef(startX + x * spacing, 0.0f, startZ + z * spacing);
+      float tx = startX + x * spacing;
+      float tz = startZ + z * spacing;
+      Mat4 translate = Mat4Translate(tx, -2.5f, tz);
+      float size = (idx < litCubes) ? 0.2f : 0.1f;
+      Mat4 scale = Mat4Scale(size, size, size);
+      Mat4 model =
+          Mat4Multiply(gSceneTransform, Mat4Multiply(translate, scale));
 
+      gShader->Use();
+      gShader->SetMat4("uModel", model.m.data());
       if (idx < litCubes) {
-        // Active RAM: Green-ish / Orange-ish
-        glColor3f(u > 0.8f ? 1.0f : 0.0f, 1.0f - u, 0.0f);
-        DrawCube(0.2f);
+        gShader->SetVec3("uColor", u > 0.8f ? 1.0f : 0.0f, 1.0f - u, 0.0f);
       } else {
-        // Empty RAM: Dark grey outline/wireframe or dim
-        glColor3f(0.1f, 0.1f, 0.1f);
-        DrawCube(0.1f);
+        gShader->SetVec3("uColor", 0.1f, 0.1f, 0.1f);
       }
-      glPopMatrix();
+      DrawMesh(gCubeMesh);
     }
   }
-  glPopMatrix();
 }
 
 // Disk Visualization: A rotating ring around the CPU
 void DrawDisk(float usage) {
-  glPushMatrix();
-  glRotatef(90.0f, 1.0f, 0.0f, 0.0f); // Flat ring
-
-  // Spin based on usage? Actually disk usage is activity.
-  // Let's just create a static ring that glows.
   static float rot = 0.0f;
-  rot += 1.0f + (usage * 0.5f); // Spin faster
-  glRotatef(rot, 0.0f, 0.0f, 1.0f);
+  rot += 1.0f + (usage * 0.5f);
 
   float u = usage / 100.0f;
 
-  // Glow: White/Yellow
-  glColor3f(0.5f + u * 0.5f, 0.5f + u * 0.5f, 0.0f);
-
-  if (quadric) {
-    // Ring
-    gluDisk(quadric, 2.0f, 2.2f + (u * 0.5f), 32, 1);
+  if (!gShader || !gShader->IsValid()) {
+    return;
   }
-  glPopMatrix();
+
+  float ringScale = (2.2f + (u * 0.5f)) / 2.2f;
+  Mat4 rotate = Mat4Multiply(Mat4RotateX(1.5707964f), Mat4RotateZ(rot * 0.0174533f));
+  Mat4 scale = Mat4Scale(ringScale, ringScale, ringScale);
+  Mat4 model = Mat4Multiply(gSceneTransform, Mat4Multiply(rotate, scale));
+
+  gShader->Use();
+  gShader->SetMat4("uModel", model.m.data());
+  gShader->SetVec3("uColor", 0.5f + u * 0.5f, 0.5f + u * 0.5f, 0.0f);
+  DrawMesh(gRingMesh);
 }
 
 void DrawScene(int width, int height) {
@@ -434,22 +764,32 @@ void DrawScene(int width, int height) {
   glClearColor(0.0f, 0.05f, 0.1f, 1.0f); // Dark sci-fi blue
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  // Projection
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluPerspective(45.0f, (GLfloat)width / (GLfloat)height, 0.1f, 100.0f);
+  if (!gShader || !gShader->IsValid()) {
+    SwapBuffers(hDC);
+    return;
+  }
 
-  // Camera
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  gluLookAt(0.0f, 5.0f, 12.0f, // Eye
-            0.0f, 0.0f, 0.0f,  // Target
-            0.0f, 1.0f, 0.0f); // Up
+  float aspect = static_cast<float>(width) / static_cast<float>(height);
+  Mat4 projection =
+      Mat4Perspective(45.0f * (kPi / 180.0f), aspect, 0.1f, 100.0f);
+  Mat4 view = Mat4LookAt({0.0f, 5.0f, 12.0f}, {0.0f, 0.0f, 0.0f},
+                         {0.0f, 1.0f, 0.0f});
 
-  // Global Rotate Scene slightly
   static float sceneRot = 0.0f;
   sceneRot += 0.2f;
-  glRotatef(sceneRot, 0.0f, 1.0f, 0.0f);
+  gSceneTransform = Mat4RotateY(sceneRot * (kPi / 180.0f));
+
+  SceneUniforms scene{};
+  std::memcpy(scene.view, view.m.data(), sizeof(scene.view));
+  std::memcpy(scene.proj, projection.m.data(), sizeof(scene.proj));
+  scene.lightDir[0] = 0.2f;
+  scene.lightDir[1] = 1.0f;
+  scene.lightDir[2] = 0.3f;
+  scene.ambient = 0.25f;
+
+  glBindBuffer(GL_UNIFORM_BUFFER, gSceneUbo);
+  glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(SceneUniforms), &scene);
+  glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
   if (sysMon) {
     DrawCPU((float)sysMon->GetCpuUsage());
@@ -461,10 +801,22 @@ void DrawScene(int width, int height) {
 }
 
 void CleanupOpenGL(HWND hwnd) {
-  if (quadric)
-    gluDeleteQuadric(quadric);
   if (sysMon)
     delete sysMon;
+
+  if (gShader) {
+    delete gShader;
+    gShader = nullptr;
+  }
+
+  if (gSceneUbo) {
+    glDeleteBuffers(1, &gSceneUbo);
+    gSceneUbo = 0;
+  }
+
+  DestroyMesh(gCubeMesh);
+  DestroyMesh(gSphereMesh);
+  DestroyMesh(gRingMesh);
 
   wglMakeCurrent(NULL, NULL);
   wglDeleteContext(hRC);
