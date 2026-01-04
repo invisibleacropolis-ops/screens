@@ -44,6 +44,40 @@ static float GetSliderValueFloat(HWND hDlg, int sliderId, float minVal,
   return minVal + (float)pos / steps * (maxVal - minVal);
 }
 
+// Helper to initialize mesh combo box
+static void InitMeshCombo(HWND hDlg, int comboId, MeshType selected) {
+  HWND hCombo = GetDlgItem(hDlg, comboId);
+  SendMessageW(hCombo, CB_ADDSTRING, 0, (LPARAM)L"Sphere");
+  SendMessageW(hCombo, CB_ADDSTRING, 0, (LPARAM)L"Cube");
+  SendMessageW(hCombo, CB_ADDSTRING, 0, (LPARAM)L"Ring");
+  SendMessageW(hCombo, CB_ADDSTRING, 0, (LPARAM)L"None");
+  SendMessage(hCombo, CB_SETCURSEL, (int)selected, 0);
+}
+
+// Helper to initialize a metric section
+static void InitMetricControls(HWND hDlg, const MetricConfig &metric,
+                               int checkId, int threshSliderId,
+                               int threshLabelId, int strSliderId,
+                               int strLabelId, int meshComboId) {
+  CheckDlgButton(hDlg, checkId, metric.enabled ? BST_CHECKED : BST_UNCHECKED);
+  SetSliderValueFloat(hDlg, threshSliderId, threshLabelId, metric.threshold,
+                      0.0f, 100.0f);
+  SetSliderValueFloat(hDlg, strSliderId, strLabelId, metric.strength, 0.0f,
+                      2.0f);
+  InitMeshCombo(hDlg, meshComboId, metric.meshType);
+}
+
+// Helper to read a metric section
+static void ReadMetricControls(HWND hDlg, MetricConfig &metric, int checkId,
+                               int threshSliderId, int strSliderId,
+                               int meshComboId) {
+  metric.enabled = (IsDlgButtonChecked(hDlg, checkId) == BST_CHECKED);
+  metric.threshold = GetSliderValueFloat(hDlg, threshSliderId, 0.0f, 100.0f);
+  metric.strength = GetSliderValueFloat(hDlg, strSliderId, 0.0f, 2.0f);
+  metric.meshType =
+      (MeshType)SendMessage(GetDlgItem(hDlg, meshComboId), CB_GETCURSEL, 0, 0);
+}
+
 // Initialize dialog controls from config
 static void InitDialogFromConfig(HWND hDlg, const Config &cfg) {
   // Quality combo
@@ -95,6 +129,24 @@ static void InitDialogFromConfig(HWND hDlg, const Config &cfg) {
   SetSliderValue(hDlg, IDC_SLIDER_BG_R, IDC_STATIC_BG_R, cfg.bgColorR, 0, 255);
   SetSliderValue(hDlg, IDC_SLIDER_BG_G, IDC_STATIC_BG_G, cfg.bgColorG, 0, 255);
   SetSliderValue(hDlg, IDC_SLIDER_BG_B, IDC_STATIC_BG_B, cfg.bgColorB, 0, 255);
+
+  // Metrics
+  InitMetricControls(hDlg, cfg.cpuMetric, IDC_CHECK_CPU_ENABLED,
+                     IDC_SLIDER_CPU_THRESHOLD, IDC_STATIC_CPU_THRESHOLD,
+                     IDC_SLIDER_CPU_STRENGTH, IDC_STATIC_CPU_STRENGTH,
+                     IDC_COMBO_CPU_MESH);
+  InitMetricControls(hDlg, cfg.ramMetric, IDC_CHECK_RAM_ENABLED,
+                     IDC_SLIDER_RAM_THRESHOLD, IDC_STATIC_RAM_THRESHOLD,
+                     IDC_SLIDER_RAM_STRENGTH, IDC_STATIC_RAM_STRENGTH,
+                     IDC_COMBO_RAM_MESH);
+  InitMetricControls(hDlg, cfg.diskMetric, IDC_CHECK_DISK_ENABLED,
+                     IDC_SLIDER_DISK_THRESHOLD, IDC_STATIC_DISK_THRESHOLD,
+                     IDC_SLIDER_DISK_STRENGTH, IDC_STATIC_DISK_STRENGTH,
+                     IDC_COMBO_DISK_MESH);
+  InitMetricControls(hDlg, cfg.networkMetric, IDC_CHECK_NET_ENABLED,
+                     IDC_SLIDER_NET_THRESHOLD, IDC_STATIC_NET_THRESHOLD,
+                     IDC_SLIDER_NET_STRENGTH, IDC_STATIC_NET_STRENGTH,
+                     IDC_COMBO_NET_MESH);
 }
 
 // Read config from dialog controls
@@ -139,6 +191,20 @@ static void ReadConfigFromDialog(HWND hDlg, Config &cfg) {
   cfg.bgColorR = GetSliderValue(hDlg, IDC_SLIDER_BG_R);
   cfg.bgColorG = GetSliderValue(hDlg, IDC_SLIDER_BG_G);
   cfg.bgColorB = GetSliderValue(hDlg, IDC_SLIDER_BG_B);
+
+  // Metrics
+  ReadMetricControls(hDlg, cfg.cpuMetric, IDC_CHECK_CPU_ENABLED,
+                     IDC_SLIDER_CPU_THRESHOLD, IDC_SLIDER_CPU_STRENGTH,
+                     IDC_COMBO_CPU_MESH);
+  ReadMetricControls(hDlg, cfg.ramMetric, IDC_CHECK_RAM_ENABLED,
+                     IDC_SLIDER_RAM_THRESHOLD, IDC_SLIDER_RAM_STRENGTH,
+                     IDC_COMBO_RAM_MESH);
+  ReadMetricControls(hDlg, cfg.diskMetric, IDC_CHECK_DISK_ENABLED,
+                     IDC_SLIDER_DISK_THRESHOLD, IDC_SLIDER_DISK_STRENGTH,
+                     IDC_COMBO_DISK_MESH);
+  ReadMetricControls(hDlg, cfg.networkMetric, IDC_CHECK_NET_ENABLED,
+                     IDC_SLIDER_NET_THRESHOLD, IDC_SLIDER_NET_STRENGTH,
+                     IDC_COMBO_NET_MESH);
 }
 
 // Update slider label when value changes
@@ -169,44 +235,82 @@ static INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message,
     HWND hSlider = (HWND)lParam;
     int id = GetDlgCtrlID(hSlider);
 
-    // Update corresponding label based on slider
+    // Map sliders to their labels and float params
+    struct SliderInfo {
+      int labelId;
+      bool isFloat;
+      float minVal;
+      float maxVal;
+    };
+    SliderInfo info = {0, false, 0, 100};
+
     switch (id) {
     case IDC_SLIDER_BLOOM_THRESH:
-      UpdateSliderLabel(hDlg, id, IDC_STATIC_BLOOM_THRESH, true, 0.3f, 1.5f);
+      info = {IDC_STATIC_BLOOM_THRESH, true, 0.3f, 1.5f};
       break;
     case IDC_SLIDER_BLOOM_STR:
-      UpdateSliderLabel(hDlg, id, IDC_STATIC_BLOOM_STR, true, 0.0f, 2.0f);
+      info = {IDC_STATIC_BLOOM_STR, true, 0.0f, 2.0f};
       break;
     case IDC_SLIDER_EXPOSURE:
-      UpdateSliderLabel(hDlg, id, IDC_STATIC_EXPOSURE, true, 0.5f, 3.0f);
+      info = {IDC_STATIC_EXPOSURE, true, 0.5f, 3.0f};
       break;
     case IDC_SLIDER_FOG_DENSITY:
-      UpdateSliderLabel(hDlg, id, IDC_STATIC_FOG_DENSITY, true, 0.0f, 0.2f);
+      info = {IDC_STATIC_FOG_DENSITY, true, 0.0f, 0.2f};
       break;
     case IDC_SLIDER_PARTICLE_CNT:
-      UpdateSliderLabel(hDlg, id, IDC_STATIC_PARTICLE_CNT, false);
+      info = {IDC_STATIC_PARTICLE_CNT, false, 0, 0};
       break;
     case IDC_SLIDER_ROTATION:
-      UpdateSliderLabel(hDlg, id, IDC_STATIC_ROTATION, true, 0.0f, 2.0f);
+      info = {IDC_STATIC_ROTATION, true, 0.0f, 2.0f};
       break;
     case IDC_SLIDER_CAM_DIST:
-      UpdateSliderLabel(hDlg, id, IDC_STATIC_CAM_DIST, true, 5.0f, 25.0f);
+      info = {IDC_STATIC_CAM_DIST, true, 5.0f, 25.0f};
       break;
     case IDC_SLIDER_CAM_HEIGHT:
-      UpdateSliderLabel(hDlg, id, IDC_STATIC_CAM_HEIGHT, true, 0.0f, 15.0f);
+      info = {IDC_STATIC_CAM_HEIGHT, true, 0.0f, 15.0f};
       break;
     case IDC_SLIDER_FOV:
-      UpdateSliderLabel(hDlg, id, IDC_STATIC_FOV, false);
+      info = {IDC_STATIC_FOV, false, 0, 0};
       break;
     case IDC_SLIDER_BG_R:
-      UpdateSliderLabel(hDlg, id, IDC_STATIC_BG_R, false);
+      info = {IDC_STATIC_BG_R, false, 0, 0};
       break;
     case IDC_SLIDER_BG_G:
-      UpdateSliderLabel(hDlg, id, IDC_STATIC_BG_G, false);
+      info = {IDC_STATIC_BG_G, false, 0, 0};
       break;
     case IDC_SLIDER_BG_B:
-      UpdateSliderLabel(hDlg, id, IDC_STATIC_BG_B, false);
+      info = {IDC_STATIC_BG_B, false, 0, 0};
       break;
+    // Metric sliders
+    case IDC_SLIDER_CPU_THRESHOLD:
+      info = {IDC_STATIC_CPU_THRESHOLD, true, 0.0f, 100.0f};
+      break;
+    case IDC_SLIDER_CPU_STRENGTH:
+      info = {IDC_STATIC_CPU_STRENGTH, true, 0.0f, 2.0f};
+      break;
+    case IDC_SLIDER_RAM_THRESHOLD:
+      info = {IDC_STATIC_RAM_THRESHOLD, true, 0.0f, 100.0f};
+      break;
+    case IDC_SLIDER_RAM_STRENGTH:
+      info = {IDC_STATIC_RAM_STRENGTH, true, 0.0f, 2.0f};
+      break;
+    case IDC_SLIDER_DISK_THRESHOLD:
+      info = {IDC_STATIC_DISK_THRESHOLD, true, 0.0f, 100.0f};
+      break;
+    case IDC_SLIDER_DISK_STRENGTH:
+      info = {IDC_STATIC_DISK_STRENGTH, true, 0.0f, 2.0f};
+      break;
+    case IDC_SLIDER_NET_THRESHOLD:
+      info = {IDC_STATIC_NET_THRESHOLD, true, 0.0f, 100.0f};
+      break;
+    case IDC_SLIDER_NET_STRENGTH:
+      info = {IDC_STATIC_NET_STRENGTH, true, 0.0f, 2.0f};
+      break;
+    }
+
+    if (info.labelId != 0) {
+      UpdateSliderLabel(hDlg, id, info.labelId, info.isFloat, info.minVal,
+                        info.maxVal);
     }
     return TRUE;
   }
@@ -223,7 +327,7 @@ static INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message,
       return TRUE;
 
     case IDC_BTN_DEFAULTS:
-      g_tempConfig = Config(); // Reset to defaults
+      g_tempConfig = Config();
       InitDialogFromConfig(hDlg, g_tempConfig);
       return TRUE;
     }
@@ -234,9 +338,7 @@ static INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message,
 
 // Create dialog template in memory (no .rc file needed)
 static LPCDLGTEMPLATE CreateDialogTemplate() {
-  // Dialog box template with all controls
-  // We'll create a simple layout programmatically
-  static BYTE buffer[8192] = {0};
+  static BYTE buffer[16384] = {0}; // Increased buffer size
   LPWORD p = (LPWORD)buffer;
 
   // Dialog header
@@ -244,22 +346,20 @@ static LPCDLGTEMPLATE CreateDialogTemplate() {
   pDlg->style = DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU |
                 WS_VISIBLE;
   pDlg->dwExtendedStyle = 0;
-  pDlg->cdit = 0; // Will count items
+  pDlg->cdit = 0;
   pDlg->x = 0;
   pDlg->y = 0;
-  pDlg->cx = 320;
-  pDlg->cy = 380;
+  pDlg->cx = 400; // Wider dialog
+  pDlg->cy = 550; // Taller dialog
 
   p = (LPWORD)(pDlg + 1);
   *p++ = 0; // No menu
   *p++ = 0; // Default class
 
-  // Title
   const wchar_t *title = L"Screensaver Settings";
   wcscpy_s((wchar_t *)p, 64, title);
   p += wcslen(title) + 1;
 
-  // Align to DWORD
   if (((ULONG_PTR)p) % 4)
     p++;
 
@@ -278,7 +378,6 @@ static LPCDLGTEMPLATE CreateDialogTemplate() {
     pItem->id = id;
     p = (LPWORD)(pItem + 1);
 
-    // Class
     if (wcscmp(cls, L"STATIC") == 0) {
       *p++ = 0xFFFF;
       *p++ = 0x0082;
@@ -292,12 +391,10 @@ static LPCDLGTEMPLATE CreateDialogTemplate() {
       *p++ = 0xFFFF;
       *p++ = 0x0085;
     } else {
-      // Custom class name (like msctls_trackbar32)
       wcscpy_s((wchar_t *)p, 64, cls);
       p += wcslen(cls) + 1;
     }
 
-    // Text
     if (text) {
       wcscpy_s((wchar_t *)p, 128, text);
       p += wcslen(text) + 1;
@@ -305,167 +402,243 @@ static LPCDLGTEMPLATE CreateDialogTemplate() {
       *p++ = 0;
     }
 
-    *p++ = 0; // No creation data
+    *p++ = 0;
     pDlg->cdit++;
   };
 
-  int y = 10;
+  int y = 8;
   int labelW = 100;
   int sliderW = 130;
   int valueW = 40;
-  int rowH = 18;
+  int rowH = 16;
 
   // Quality section
   AddItem(SS_LEFT, 10, y, labelW, 12, IDC_LABEL_QUALITY, L"STATIC",
           L"Quality:");
   AddItem(CBS_DROPDOWNLIST | WS_TABSTOP, 115, y - 2, 80, 100, IDC_COMBO_QUALITY,
           L"COMBOBOX", nullptr);
-  y += rowH + 5;
+  y += rowH + 4;
 
-  // -- Visual Effects Header --
-  AddItem(SS_LEFT | SS_SUNKEN, 10, y, 295, 1, 0, L"STATIC", nullptr);
-  y += 5;
+  // -- Visual Effects --
+  AddItem(SS_LEFT | SS_SUNKEN, 10, y, 375, 1, 0, L"STATIC", nullptr);
+  y += 4;
   AddItem(SS_LEFT, 10, y, 100, 12, 0, L"STATIC", L"Visual Effects");
   y += rowH;
 
-  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 15, y, 80, 12, IDC_CHECK_BLOOM,
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 15, y, 60, 12, IDC_CHECK_BLOOM,
           L"BUTTON", L"Bloom");
-  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 100, y, 80, 12, IDC_CHECK_FXAA,
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 80, y, 60, 12, IDC_CHECK_FXAA,
           L"BUTTON", L"FXAA");
   y += rowH;
 
-  AddItem(SS_LEFT, 15, y, labelW - 10, 12, IDC_LABEL_BLOOM_THRESH, L"STATIC",
-          L"Bloom Threshold:");
-  AddItem(0, 115, y, sliderW, 15, IDC_SLIDER_BLOOM_THRESH, TRACKBAR_CLASSW,
+  AddItem(SS_LEFT, 15, y, 90, 12, IDC_LABEL_BLOOM_THRESH, L"STATIC",
+          L"Bloom Thresh:");
+  AddItem(0, 110, y, sliderW, 14, IDC_SLIDER_BLOOM_THRESH, TRACKBAR_CLASSW,
           nullptr);
-  AddItem(SS_LEFT, 250, y, valueW, 12, IDC_STATIC_BLOOM_THRESH, L"STATIC",
+  AddItem(SS_LEFT, 245, y, valueW, 12, IDC_STATIC_BLOOM_THRESH, L"STATIC",
           L"0.70");
   y += rowH;
 
-  AddItem(SS_LEFT, 15, y, labelW - 10, 12, IDC_LABEL_BLOOM_STR, L"STATIC",
+  AddItem(SS_LEFT, 15, y, 90, 12, IDC_LABEL_BLOOM_STR, L"STATIC",
           L"Bloom Strength:");
-  AddItem(0, 115, y, sliderW, 15, IDC_SLIDER_BLOOM_STR, TRACKBAR_CLASSW,
+  AddItem(0, 110, y, sliderW, 14, IDC_SLIDER_BLOOM_STR, TRACKBAR_CLASSW,
           nullptr);
-  AddItem(SS_LEFT, 250, y, valueW, 12, IDC_STATIC_BLOOM_STR, L"STATIC",
+  AddItem(SS_LEFT, 245, y, valueW, 12, IDC_STATIC_BLOOM_STR, L"STATIC",
           L"0.80");
   y += rowH;
 
-  AddItem(SS_LEFT, 15, y, labelW - 10, 12, IDC_LABEL_EXPOSURE, L"STATIC",
-          L"Exposure:");
-  AddItem(0, 115, y, sliderW, 15, IDC_SLIDER_EXPOSURE, TRACKBAR_CLASSW,
+  AddItem(SS_LEFT, 15, y, 90, 12, IDC_LABEL_EXPOSURE, L"STATIC", L"Exposure:");
+  AddItem(0, 110, y, sliderW, 14, IDC_SLIDER_EXPOSURE, TRACKBAR_CLASSW,
           nullptr);
-  AddItem(SS_LEFT, 250, y, valueW, 12, IDC_STATIC_EXPOSURE, L"STATIC", L"1.00");
-  y += rowH + 5;
+  AddItem(SS_LEFT, 245, y, valueW, 12, IDC_STATIC_EXPOSURE, L"STATIC", L"1.00");
+  y += rowH + 4;
 
-  // -- Fog Header --
-  AddItem(SS_LEFT | SS_SUNKEN, 10, y, 295, 1, 0, L"STATIC", nullptr);
-  y += 5;
-  AddItem(SS_LEFT, 10, y, 100, 12, 0, L"STATIC", L"Fog");
-  y += rowH;
-
-  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 15, y, 80, 12, IDC_CHECK_FOG, L"BUTTON",
-          L"Enable Fog");
-  y += rowH;
-
-  AddItem(SS_LEFT, 15, y, labelW - 10, 12, IDC_LABEL_FOG_DENSITY, L"STATIC",
-          L"Fog Density:");
-  AddItem(0, 115, y, sliderW, 15, IDC_SLIDER_FOG_DENSITY, TRACKBAR_CLASSW,
-          nullptr);
-  AddItem(SS_LEFT, 250, y, valueW, 12, IDC_STATIC_FOG_DENSITY, L"STATIC",
+  // -- Fog --
+  AddItem(SS_LEFT | SS_SUNKEN, 10, y, 375, 1, 0, L"STATIC", nullptr);
+  y += 4;
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 10, y, 80, 12, IDC_CHECK_FOG, L"BUTTON",
+          L"Fog");
+  AddItem(SS_LEFT, 100, y, 60, 12, IDC_LABEL_FOG_DENSITY, L"STATIC",
+          L"Density:");
+  AddItem(0, 160, y, 80, 14, IDC_SLIDER_FOG_DENSITY, TRACKBAR_CLASSW, nullptr);
+  AddItem(SS_LEFT, 245, y, valueW, 12, IDC_STATIC_FOG_DENSITY, L"STATIC",
           L"0.05");
-  y += rowH + 5;
+  y += rowH + 4;
 
-  // -- Particles Header --
-  AddItem(SS_LEFT | SS_SUNKEN, 10, y, 295, 1, 0, L"STATIC", nullptr);
-  y += 5;
-  AddItem(SS_LEFT, 10, y, 100, 12, 0, L"STATIC", L"Particles");
-  y += rowH;
-
-  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 15, y, 80, 12, IDC_CHECK_PARTICLES,
-          L"BUTTON", L"Enable");
-  y += rowH;
-
-  AddItem(SS_LEFT, 15, y, labelW - 10, 12, IDC_LABEL_PARTICLE_CNT, L"STATIC",
+  // -- Particles --
+  AddItem(SS_LEFT | SS_SUNKEN, 10, y, 375, 1, 0, L"STATIC", nullptr);
+  y += 4;
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 10, y, 80, 12, IDC_CHECK_PARTICLES,
+          L"BUTTON", L"Particles");
+  AddItem(SS_LEFT, 100, y, 50, 12, IDC_LABEL_PARTICLE_CNT, L"STATIC",
           L"Count:");
-  AddItem(0, 115, y, sliderW, 15, IDC_SLIDER_PARTICLE_CNT, TRACKBAR_CLASSW,
-          nullptr);
-  AddItem(SS_LEFT, 250, y, valueW, 12, IDC_STATIC_PARTICLE_CNT, L"STATIC",
+  AddItem(0, 150, y, 90, 14, IDC_SLIDER_PARTICLE_CNT, TRACKBAR_CLASSW, nullptr);
+  AddItem(SS_LEFT, 245, y, valueW, 12, IDC_STATIC_PARTICLE_CNT, L"STATIC",
           L"6000");
-  y += rowH + 5;
+  y += rowH + 4;
 
-  // -- Camera Header --
-  AddItem(SS_LEFT | SS_SUNKEN, 10, y, 295, 1, 0, L"STATIC", nullptr);
-  y += 5;
+  // -- Camera & Scene --
+  AddItem(SS_LEFT | SS_SUNKEN, 10, y, 375, 1, 0, L"STATIC", nullptr);
+  y += 4;
   AddItem(SS_LEFT, 10, y, 100, 12, 0, L"STATIC", L"Camera & Scene");
   y += rowH;
 
-  AddItem(SS_LEFT, 15, y, labelW - 10, 12, IDC_LABEL_ROTATION, L"STATIC",
+  AddItem(SS_LEFT, 15, y, 90, 12, IDC_LABEL_ROTATION, L"STATIC",
           L"Rotation Speed:");
-  AddItem(0, 115, y, sliderW, 15, IDC_SLIDER_ROTATION, TRACKBAR_CLASSW,
+  AddItem(0, 110, y, sliderW, 14, IDC_SLIDER_ROTATION, TRACKBAR_CLASSW,
           nullptr);
-  AddItem(SS_LEFT, 250, y, valueW, 12, IDC_STATIC_ROTATION, L"STATIC", L"0.20");
+  AddItem(SS_LEFT, 245, y, valueW, 12, IDC_STATIC_ROTATION, L"STATIC", L"0.20");
   y += rowH;
 
-  AddItem(SS_LEFT, 15, y, labelW - 10, 12, IDC_LABEL_CAM_DIST, L"STATIC",
-          L"Distance:");
-  AddItem(0, 115, y, sliderW, 15, IDC_SLIDER_CAM_DIST, TRACKBAR_CLASSW,
+  AddItem(SS_LEFT, 15, y, 90, 12, IDC_LABEL_CAM_DIST, L"STATIC", L"Distance:");
+  AddItem(0, 110, y, sliderW, 14, IDC_SLIDER_CAM_DIST, TRACKBAR_CLASSW,
           nullptr);
-  AddItem(SS_LEFT, 250, y, valueW, 12, IDC_STATIC_CAM_DIST, L"STATIC",
+  AddItem(SS_LEFT, 245, y, valueW, 12, IDC_STATIC_CAM_DIST, L"STATIC",
           L"12.00");
   y += rowH;
 
-  AddItem(SS_LEFT, 15, y, labelW - 10, 12, IDC_LABEL_CAM_HEIGHT, L"STATIC",
-          L"Height:");
-  AddItem(0, 115, y, sliderW, 15, IDC_SLIDER_CAM_HEIGHT, TRACKBAR_CLASSW,
+  AddItem(SS_LEFT, 15, y, 90, 12, IDC_LABEL_CAM_HEIGHT, L"STATIC", L"Height:");
+  AddItem(0, 110, y, sliderW, 14, IDC_SLIDER_CAM_HEIGHT, TRACKBAR_CLASSW,
           nullptr);
-  AddItem(SS_LEFT, 250, y, valueW, 12, IDC_STATIC_CAM_HEIGHT, L"STATIC",
+  AddItem(SS_LEFT, 245, y, valueW, 12, IDC_STATIC_CAM_HEIGHT, L"STATIC",
           L"5.00");
   y += rowH;
 
-  AddItem(SS_LEFT, 15, y, labelW - 10, 12, IDC_LABEL_FOV, L"STATIC",
-          L"Field of View:");
-  AddItem(0, 115, y, sliderW, 15, IDC_SLIDER_FOV, TRACKBAR_CLASSW, nullptr);
-  AddItem(SS_LEFT, 250, y, valueW, 12, IDC_STATIC_FOV, L"STATIC", L"45");
-  y += rowH + 5;
+  AddItem(SS_LEFT, 15, y, 90, 12, IDC_LABEL_FOV, L"STATIC", L"Field of View:");
+  AddItem(0, 110, y, sliderW, 14, IDC_SLIDER_FOV, TRACKBAR_CLASSW, nullptr);
+  AddItem(SS_LEFT, 245, y, valueW, 12, IDC_STATIC_FOV, L"STATIC", L"45");
+  y += rowH + 4;
 
-  // -- Background Header --
-  AddItem(SS_LEFT | SS_SUNKEN, 10, y, 295, 1, 0, L"STATIC", nullptr);
-  y += 5;
-  AddItem(SS_LEFT, 10, y, 100, 12, 0, L"STATIC", L"Background");
+  // -- Background --
+  AddItem(SS_LEFT | SS_SUNKEN, 10, y, 375, 1, 0, L"STATIC", nullptr);
+  y += 4;
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 10, y, 80, 12, IDC_CHECK_SKYBOX,
+          L"BUTTON", L"Skybox");
+  AddItem(SS_LEFT, 100, y, 20, 12, IDC_LABEL_BG_R, L"STATIC", L"R:");
+  AddItem(0, 120, y, 50, 14, IDC_SLIDER_BG_R, TRACKBAR_CLASSW, nullptr);
+  AddItem(SS_LEFT, 172, y, 20, 12, IDC_STATIC_BG_R, L"STATIC", L"0");
+  AddItem(SS_LEFT, 195, y, 20, 12, IDC_LABEL_BG_G, L"STATIC", L"G:");
+  AddItem(0, 215, y, 50, 14, IDC_SLIDER_BG_G, TRACKBAR_CLASSW, nullptr);
+  AddItem(SS_LEFT, 267, y, 20, 12, IDC_STATIC_BG_G, L"STATIC", L"13");
+  AddItem(SS_LEFT, 290, y, 20, 12, IDC_LABEL_BG_B, L"STATIC", L"B:");
+  AddItem(0, 310, y, 50, 14, IDC_SLIDER_BG_B, TRACKBAR_CLASSW, nullptr);
+  AddItem(SS_LEFT, 362, y, 20, 12, IDC_STATIC_BG_B, L"STATIC", L"25");
+  y += rowH + 6;
+
+  // =====================================================================
+  // SYSTEM METRICS SECTION
+  // =====================================================================
+  AddItem(SS_LEFT | SS_SUNKEN, 10, y, 375, 1, 0, L"STATIC", nullptr);
+  y += 4;
+  AddItem(SS_LEFT, 10, y, 150, 12, 0, L"STATIC",
+          L"System Metrics Visualization");
   y += rowH;
 
-  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 15, y, 100, 12, IDC_CHECK_SKYBOX,
-          L"BUTTON", L"Show Skybox");
-  y += rowH;
+  // Inline metric sections (helper removed for C++17 compat)
+  int mSliderW = 100;
+  int mValueW = 35;
+  int mRowH = 16;
 
-  AddItem(SS_LEFT, 15, y, 25, 12, IDC_LABEL_BG_R, L"STATIC", L"R:");
-  AddItem(0, 40, y, 60, 15, IDC_SLIDER_BG_R, TRACKBAR_CLASSW, nullptr);
-  AddItem(SS_LEFT, 105, y, 25, 12, IDC_STATIC_BG_R, L"STATIC", L"0");
+  // CPU Metric
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 15, y, 70, 12, IDC_CHECK_CPU_ENABLED,
+          L"BUTTON", L"CPU");
+  AddItem(SS_LEFT, 90, y, 50, 12, IDC_LABEL_CPU_THRESHOLD, L"STATIC",
+          L"Thresh:");
+  AddItem(0, 140, y, mSliderW, 14, IDC_SLIDER_CPU_THRESHOLD, TRACKBAR_CLASSW,
+          nullptr);
+  AddItem(SS_LEFT, 245, y, mValueW, 12, IDC_STATIC_CPU_THRESHOLD, L"STATIC",
+          L"0");
+  AddItem(SS_LEFT, 280, y, 30, 12, IDC_LABEL_CPU_MESH, L"STATIC", L"Mesh:");
+  AddItem(CBS_DROPDOWNLIST | WS_TABSTOP, 310, y - 2, 70, 100,
+          IDC_COMBO_CPU_MESH, L"COMBOBOX", nullptr);
+  y += mRowH;
+  AddItem(SS_LEFT, 90, y, 50, 12, IDC_LABEL_CPU_STRENGTH, L"STATIC",
+          L"Strength:");
+  AddItem(0, 140, y, mSliderW, 14, IDC_SLIDER_CPU_STRENGTH, TRACKBAR_CLASSW,
+          nullptr);
+  AddItem(SS_LEFT, 245, y, mValueW, 12, IDC_STATIC_CPU_STRENGTH, L"STATIC",
+          L"1.00");
+  y += mRowH + 2;
 
-  AddItem(SS_LEFT, 130, y, 25, 12, IDC_LABEL_BG_G, L"STATIC", L"G:");
-  AddItem(0, 155, y, 60, 15, IDC_SLIDER_BG_G, TRACKBAR_CLASSW, nullptr);
-  AddItem(SS_LEFT, 220, y, 25, 12, IDC_STATIC_BG_G, L"STATIC", L"13");
+  // RAM Metric
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 15, y, 70, 12, IDC_CHECK_RAM_ENABLED,
+          L"BUTTON", L"RAM");
+  AddItem(SS_LEFT, 90, y, 50, 12, IDC_LABEL_RAM_THRESHOLD, L"STATIC",
+          L"Thresh:");
+  AddItem(0, 140, y, mSliderW, 14, IDC_SLIDER_RAM_THRESHOLD, TRACKBAR_CLASSW,
+          nullptr);
+  AddItem(SS_LEFT, 245, y, mValueW, 12, IDC_STATIC_RAM_THRESHOLD, L"STATIC",
+          L"0");
+  AddItem(SS_LEFT, 280, y, 30, 12, IDC_LABEL_RAM_MESH, L"STATIC", L"Mesh:");
+  AddItem(CBS_DROPDOWNLIST | WS_TABSTOP, 310, y - 2, 70, 100,
+          IDC_COMBO_RAM_MESH, L"COMBOBOX", nullptr);
+  y += mRowH;
+  AddItem(SS_LEFT, 90, y, 50, 12, IDC_LABEL_RAM_STRENGTH, L"STATIC",
+          L"Strength:");
+  AddItem(0, 140, y, mSliderW, 14, IDC_SLIDER_RAM_STRENGTH, TRACKBAR_CLASSW,
+          nullptr);
+  AddItem(SS_LEFT, 245, y, mValueW, 12, IDC_STATIC_RAM_STRENGTH, L"STATIC",
+          L"1.00");
+  y += mRowH + 2;
 
-  AddItem(SS_LEFT, 245, y, 25, 12, IDC_LABEL_BG_B, L"STATIC", L"B:");
-  AddItem(0, 260, y, 35, 15, IDC_SLIDER_BG_B, TRACKBAR_CLASSW, nullptr);
-  AddItem(SS_LEFT, 297, y, 25, 12, IDC_STATIC_BG_B, L"STATIC", L"25");
-  y += rowH + 10;
+  // Disk Metric
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 15, y, 70, 12, IDC_CHECK_DISK_ENABLED,
+          L"BUTTON", L"Disk");
+  AddItem(SS_LEFT, 90, y, 50, 12, IDC_LABEL_DISK_THRESHOLD, L"STATIC",
+          L"Thresh:");
+  AddItem(0, 140, y, mSliderW, 14, IDC_SLIDER_DISK_THRESHOLD, TRACKBAR_CLASSW,
+          nullptr);
+  AddItem(SS_LEFT, 245, y, mValueW, 12, IDC_STATIC_DISK_THRESHOLD, L"STATIC",
+          L"0");
+  AddItem(SS_LEFT, 280, y, 30, 12, IDC_LABEL_DISK_MESH, L"STATIC", L"Mesh:");
+  AddItem(CBS_DROPDOWNLIST | WS_TABSTOP, 310, y - 2, 70, 100,
+          IDC_COMBO_DISK_MESH, L"COMBOBOX", nullptr);
+  y += mRowH;
+  AddItem(SS_LEFT, 90, y, 50, 12, IDC_LABEL_DISK_STRENGTH, L"STATIC",
+          L"Strength:");
+  AddItem(0, 140, y, mSliderW, 14, IDC_SLIDER_DISK_STRENGTH, TRACKBAR_CLASSW,
+          nullptr);
+  AddItem(SS_LEFT, 245, y, mValueW, 12, IDC_STATIC_DISK_STRENGTH, L"STATIC",
+          L"1.00");
+  y += mRowH + 2;
+
+  // Network Metric
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 15, y, 70, 12, IDC_CHECK_NET_ENABLED,
+          L"BUTTON", L"Network");
+  AddItem(SS_LEFT, 90, y, 50, 12, IDC_LABEL_NET_THRESHOLD, L"STATIC",
+          L"Thresh:");
+  AddItem(0, 140, y, mSliderW, 14, IDC_SLIDER_NET_THRESHOLD, TRACKBAR_CLASSW,
+          nullptr);
+  AddItem(SS_LEFT, 245, y, mValueW, 12, IDC_STATIC_NET_THRESHOLD, L"STATIC",
+          L"0");
+  AddItem(SS_LEFT, 280, y, 30, 12, IDC_LABEL_NET_MESH, L"STATIC", L"Mesh:");
+  AddItem(CBS_DROPDOWNLIST | WS_TABSTOP, 310, y - 2, 70, 100,
+          IDC_COMBO_NET_MESH, L"COMBOBOX", nullptr);
+  y += mRowH;
+  AddItem(SS_LEFT, 90, y, 50, 12, IDC_LABEL_NET_STRENGTH, L"STATIC",
+          L"Strength:");
+  AddItem(0, 140, y, mSliderW, 14, IDC_SLIDER_NET_STRENGTH, TRACKBAR_CLASSW,
+          nullptr);
+  AddItem(SS_LEFT, 245, y, mValueW, 12, IDC_STATIC_NET_STRENGTH, L"STATIC",
+          L"1.00");
+  y += mRowH + 2;
+
+  y += 6;
 
   // Buttons
-  AddItem(BS_DEFPUSHBUTTON | WS_TABSTOP, 80, y, 60, 18, IDOK, L"BUTTON", L"OK");
-  AddItem(BS_PUSHBUTTON | WS_TABSTOP, 145, y, 60, 18, IDCANCEL, L"BUTTON",
+  AddItem(BS_DEFPUSHBUTTON | WS_TABSTOP, 100, y, 60, 18, IDOK, L"BUTTON",
+          L"OK");
+  AddItem(BS_PUSHBUTTON | WS_TABSTOP, 165, y, 60, 18, IDCANCEL, L"BUTTON",
           L"Cancel");
-  AddItem(BS_PUSHBUTTON | WS_TABSTOP, 210, y, 60, 18, IDC_BTN_DEFAULTS,
+  AddItem(BS_PUSHBUTTON | WS_TABSTOP, 230, y, 60, 18, IDC_BTN_DEFAULTS,
           L"BUTTON", L"Defaults");
 
-  // Update dialog height
-  pDlg->cy = y + 30;
+  pDlg->cy = y + 28;
 
   return (LPCDLGTEMPLATE)buffer;
 }
 
 bool ShowSettingsDialog(HINSTANCE hInstance, HWND parent, Config &config) {
-  // Init common controls for trackbars
   INITCOMMONCONTROLSEX icex;
   icex.dwSize = sizeof(icex);
   icex.dwICC = ICC_BAR_CLASSES;
