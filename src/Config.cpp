@@ -81,6 +81,37 @@ std::string QualityToString(QualityTier tier) {
 }
 } // namespace
 
+// MeshType conversion functions (public)
+const char *MeshTypeToString(MeshType type) {
+  switch (type) {
+  case MeshType::Sphere:
+    return "sphere";
+  case MeshType::Cube:
+    return "cube";
+  case MeshType::Ring:
+    return "ring";
+  case MeshType::None:
+    return "none";
+  }
+  return "sphere";
+}
+
+MeshType StringToMeshType(const std::string &str) {
+  std::string lower = str;
+  std::transform(
+      lower.begin(), lower.end(), lower.begin(),
+      [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (lower == "sphere" || lower == "0")
+    return MeshType::Sphere;
+  if (lower == "cube" || lower == "1")
+    return MeshType::Cube;
+  if (lower == "ring" || lower == "2")
+    return MeshType::Ring;
+  if (lower == "none" || lower == "3")
+    return MeshType::None;
+  return MeshType::Sphere;
+}
+
 std::wstring GetConfigPath() {
   wchar_t modulePath[MAX_PATH] = {};
   GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
@@ -162,6 +193,53 @@ Config LoadConfig() {
     } else if (key == "bg_color_b") {
       config.bgColorB = std::clamp(ParseInt(value, config.bgColorB), 0, 255);
     }
+    // CPU Metric
+    else if (key == "cpu_enabled") {
+      config.cpuMetric.enabled = ParseBool(value, config.cpuMetric.enabled);
+    } else if (key == "cpu_threshold") {
+      config.cpuMetric.threshold =
+          ParseFloat(value, config.cpuMetric.threshold);
+    } else if (key == "cpu_strength") {
+      config.cpuMetric.strength = ParseFloat(value, config.cpuMetric.strength);
+    } else if (key == "cpu_mesh") {
+      config.cpuMetric.meshType = StringToMeshType(value);
+    }
+    // RAM Metric
+    else if (key == "ram_enabled") {
+      config.ramMetric.enabled = ParseBool(value, config.ramMetric.enabled);
+    } else if (key == "ram_threshold") {
+      config.ramMetric.threshold =
+          ParseFloat(value, config.ramMetric.threshold);
+    } else if (key == "ram_strength") {
+      config.ramMetric.strength = ParseFloat(value, config.ramMetric.strength);
+    } else if (key == "ram_mesh") {
+      config.ramMetric.meshType = StringToMeshType(value);
+    }
+    // Disk Metric
+    else if (key == "disk_enabled") {
+      config.diskMetric.enabled = ParseBool(value, config.diskMetric.enabled);
+    } else if (key == "disk_threshold") {
+      config.diskMetric.threshold =
+          ParseFloat(value, config.diskMetric.threshold);
+    } else if (key == "disk_strength") {
+      config.diskMetric.strength =
+          ParseFloat(value, config.diskMetric.strength);
+    } else if (key == "disk_mesh") {
+      config.diskMetric.meshType = StringToMeshType(value);
+    }
+    // Network Metric
+    else if (key == "network_enabled") {
+      config.networkMetric.enabled =
+          ParseBool(value, config.networkMetric.enabled);
+    } else if (key == "network_threshold") {
+      config.networkMetric.threshold =
+          ParseFloat(value, config.networkMetric.threshold);
+    } else if (key == "network_strength") {
+      config.networkMetric.strength =
+          ParseFloat(value, config.networkMetric.strength);
+    } else if (key == "network_mesh") {
+      config.networkMetric.meshType = StringToMeshType(value);
+    }
   }
 
   return config;
@@ -206,7 +284,38 @@ bool SaveConfig(const Config &config) {
   file << "skybox=" << (config.skyboxEnabled ? "true" : "false") << "\n";
   file << "bg_color_r=" << config.bgColorR << "\n";
   file << "bg_color_g=" << config.bgColorG << "\n";
-  file << "bg_color_b=" << config.bgColorB << "\n";
+  file << "bg_color_b=" << config.bgColorB << "\n\n";
+
+  // Metric Visualizations
+  file << "# CPU Metric (mesh: sphere, cube, ring, none)\n";
+  file << "cpu_enabled=" << (config.cpuMetric.enabled ? "true" : "false")
+       << "\n";
+  file << "cpu_threshold=" << config.cpuMetric.threshold << "\n";
+  file << "cpu_strength=" << config.cpuMetric.strength << "\n";
+  file << "cpu_mesh=" << MeshTypeToString(config.cpuMetric.meshType) << "\n\n";
+
+  file << "# RAM Metric\n";
+  file << "ram_enabled=" << (config.ramMetric.enabled ? "true" : "false")
+       << "\n";
+  file << "ram_threshold=" << config.ramMetric.threshold << "\n";
+  file << "ram_strength=" << config.ramMetric.strength << "\n";
+  file << "ram_mesh=" << MeshTypeToString(config.ramMetric.meshType) << "\n\n";
+
+  file << "# Disk Metric\n";
+  file << "disk_enabled=" << (config.diskMetric.enabled ? "true" : "false")
+       << "\n";
+  file << "disk_threshold=" << config.diskMetric.threshold << "\n";
+  file << "disk_strength=" << config.diskMetric.strength << "\n";
+  file << "disk_mesh=" << MeshTypeToString(config.diskMetric.meshType)
+       << "\n\n";
+
+  file << "# Network Metric\n";
+  file << "network_enabled="
+       << (config.networkMetric.enabled ? "true" : "false") << "\n";
+  file << "network_threshold=" << config.networkMetric.threshold << "\n";
+  file << "network_strength=" << config.networkMetric.strength << "\n";
+  file << "network_mesh=" << MeshTypeToString(config.networkMetric.meshType)
+       << "\n";
 
   return true;
 }

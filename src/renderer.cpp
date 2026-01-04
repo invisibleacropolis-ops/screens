@@ -898,9 +898,33 @@ void DrawCube(float size, float r, float g, float b) {
   DrawMesh(gCubeMesh);
 }
 
-// CPU Visualization: A pulsing sphere
+// Helper to get the appropriate mesh based on MeshType
+static Mesh &GetMeshByType(MeshType type) {
+  switch (type) {
+  case MeshType::Cube:
+    return gCubeMesh;
+  case MeshType::Ring:
+    return gRingMesh;
+  case MeshType::Sphere:
+  default:
+    return gSphereMesh;
+  }
+}
+
+// CPU Visualization: A pulsing shape
 void DrawCPU(float usage) {
-  float u = usage / 100.0f;
+  if (!gConfig.cpuMetric.enabled)
+    return;
+  if (gConfig.cpuMetric.meshType == MeshType::None)
+    return;
+
+  // Apply threshold - if usage is below threshold, reduce the effect
+  float effective = usage - gConfig.cpuMetric.threshold;
+  if (effective < 0.0f)
+    effective = 0.0f;
+  float u = (effective / (100.0f - gConfig.cpuMetric.threshold)) *
+            gConfig.cpuMetric.strength;
+  u = (u > 1.0f) ? 1.0f : u;
 
   static float pulse = 0.0f;
   pulse += 0.1f + (u * 0.5f);
@@ -914,16 +938,27 @@ void DrawCPU(float usage) {
   gShader->Use();
   gShader->SetMat4("uModel", model.m.data());
   gShader->SetVec3("uColor", u, 0.2f, 1.0f - u);
-  DrawMesh(gSphereMesh);
+  DrawMesh(GetMeshByType(gConfig.cpuMetric.meshType));
 }
 
-// RAM Visualization: A grid of cubes that fills up
+// RAM Visualization: A grid of shapes that fills up
 void DrawRAM(float usage) {
+  if (!gConfig.ramMetric.enabled)
+    return;
+  if (gConfig.ramMetric.meshType == MeshType::None)
+    return;
   if (!gShader || !gShader->IsValid()) {
     return;
   }
 
-  float u = usage / 100.0f; // 0..1
+  // Apply threshold and strength
+  float effective = usage - gConfig.ramMetric.threshold;
+  if (effective < 0.0f)
+    effective = 0.0f;
+  float u = (effective / (100.0f - gConfig.ramMetric.threshold)) *
+            gConfig.ramMetric.strength;
+  u = (u > 1.0f) ? 1.0f : u;
+
   int totalCubes = 100;
   int litCubes = (int)(u * 100);
 
@@ -949,17 +984,28 @@ void DrawRAM(float usage) {
       } else {
         gShader->SetVec3("uColor", 0.1f, 0.1f, 0.1f);
       }
-      DrawMesh(gCubeMesh);
+      DrawMesh(GetMeshByType(gConfig.ramMetric.meshType));
     }
   }
 }
 
-// Disk Visualization: A rotating ring around the CPU
+// Disk Visualization: A rotating shape
 void DrawDisk(float usage) {
-  static float rot = 0.0f;
-  rot += 1.0f + (usage * 0.5f);
+  if (!gConfig.diskMetric.enabled)
+    return;
+  if (gConfig.diskMetric.meshType == MeshType::None)
+    return;
 
-  float u = usage / 100.0f;
+  // Apply threshold and strength
+  float effective = usage - gConfig.diskMetric.threshold;
+  if (effective < 0.0f)
+    effective = 0.0f;
+  float u = (effective / (100.0f - gConfig.diskMetric.threshold)) *
+            gConfig.diskMetric.strength;
+  u = (u > 1.0f) ? 1.0f : u;
+
+  static float rot = 0.0f;
+  rot += 1.0f + (u * 50.0f);
 
   if (!gShader || !gShader->IsValid()) {
     return;
@@ -974,7 +1020,7 @@ void DrawDisk(float usage) {
   gShader->Use();
   gShader->SetMat4("uModel", model.m.data());
   gShader->SetVec3("uColor", 0.5f + u * 0.5f, 0.5f + u * 0.5f, 0.0f);
-  DrawMesh(gRingMesh);
+  DrawMesh(GetMeshByType(gConfig.diskMetric.meshType));
 }
 
 void DrawScene(int width, int height) {
