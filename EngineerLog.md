@@ -30,3 +30,16 @@
 **Remaining TODO**:
 - Implement complex Network Interface aggregation (currently stubbed).
 - Polish visual aesthetics (add shaders, better lighting).
+
+## Session: 2026-01-04
+**Agent**: ChatGPT
+**Task**: HDR Post-Processing Pipeline
+**Changes**:
+- Added HDR framebuffer targets with floating-point color attachments and a resize-aware post-processing pipeline in `src/renderer.cpp`.
+- Implemented a fullscreen quad path for bloom extraction, multi-pass Gaussian blur, tone mapping, and optional FXAA.
+- Added new post-processing shader programs (`assets/shaders/fullscreen.vert`, `assets/shaders/bloom_extract.frag`, `assets/shaders/bloom_blur.frag`, `assets/shaders/tonemap.frag`, `assets/shaders/fxaa.frag`).
+- Extended the shader utility with a `SetVec2` helper for post-processing uniforms.
+
+**Completion %**: 100% (HDR Pipeline)
+**Remaining TODO**:
+- Expose bloom/FXAA toggles via user configuration if needed.

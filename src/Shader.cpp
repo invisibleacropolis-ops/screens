@@ -65,6 +65,13 @@ void Shader::SetMat4(const std::string &name, const float *value) const {
   }
 }
 
+void Shader::SetVec2(const std::string &name, float x, float y) const {
+  GLint location = glGetUniformLocation(programId_, name.c_str());
+  if (location >= 0) {
+    glUniform2f(location, x, y);
+  }
+}
+
 void Shader::SetVec3(const std::string &name, float x, float y, float z) const {
   GLint location = glGetUniformLocation(programId_, name.c_str());
   if (location >= 0) {

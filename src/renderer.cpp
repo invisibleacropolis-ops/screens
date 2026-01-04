@@ -89,6 +89,25 @@ struct Mesh {
   bool indexed = false;
 };
 
+struct PostProcessPipeline {
+  int width = 0;
+  int height = 0;
+  GLuint hdrFbo = 0;
+  GLuint hdrColor = 0;
+  GLuint hdrDepth = 0;
+  GLuint ldrFbo = 0;
+  GLuint ldrColor = 0;
+  GLuint pingpongFbo[2] = {0, 0};
+  GLuint pingpongColor[2] = {0, 0};
+  GLuint quadVao = 0;
+  GLuint quadVbo = 0;
+  Shader *extractShader = nullptr;
+  Shader *blurShader = nullptr;
+  Shader *tonemapShader = nullptr;
+  Shader *fxaaShader = nullptr;
+  bool fxaaEnabled = true;
+};
+
 Shader *gShader = nullptr;
 GLuint gSceneUbo = 0;
 Mesh gCubeMesh;
@@ -96,6 +115,7 @@ Mesh gSphereMesh;
 Mesh gRingMesh;
 static constexpr float kPi = 3.14159265358979323846f;
 Mat4 gSceneTransform{};
+PostProcessPipeline gPost{};
 
 struct SceneUniforms {
   float view[16];
@@ -599,6 +619,135 @@ static void DrawMesh(const Mesh &mesh) {
   glBindVertexArray(0);
 }
 
+static GLuint CreateColorTexture(int width, int height, GLint internalFormat,
+                                 GLenum format, GLenum type) {
+  GLuint tex = 0;
+  glGenTextures(1, &tex);
+  glBindTexture(GL_TEXTURE_2D, tex);
+  glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, type,
+               nullptr);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  return tex;
+}
+
+static void DestroyPostProcessTargets(PostProcessPipeline &pipeline) {
+  if (pipeline.hdrDepth) {
+    glDeleteRenderbuffers(1, &pipeline.hdrDepth);
+    pipeline.hdrDepth = 0;
+  }
+  if (pipeline.hdrColor) {
+    glDeleteTextures(1, &pipeline.hdrColor);
+    pipeline.hdrColor = 0;
+  }
+  if (pipeline.hdrFbo) {
+    glDeleteFramebuffers(1, &pipeline.hdrFbo);
+    pipeline.hdrFbo = 0;
+  }
+  if (pipeline.ldrColor) {
+    glDeleteTextures(1, &pipeline.ldrColor);
+    pipeline.ldrColor = 0;
+  }
+  if (pipeline.ldrFbo) {
+    glDeleteFramebuffers(1, &pipeline.ldrFbo);
+    pipeline.ldrFbo = 0;
+  }
+  for (int i = 0; i < 2; ++i) {
+    if (pipeline.pingpongColor[i]) {
+      glDeleteTextures(1, &pipeline.pingpongColor[i]);
+      pipeline.pingpongColor[i] = 0;
+    }
+    if (pipeline.pingpongFbo[i]) {
+      glDeleteFramebuffers(1, &pipeline.pingpongFbo[i]);
+      pipeline.pingpongFbo[i] = 0;
+    }
+  }
+  pipeline.width = 0;
+  pipeline.height = 0;
+}
+
+static void CreatePostProcessTargets(PostProcessPipeline &pipeline, int width,
+                                     int height) {
+  if (pipeline.width == width && pipeline.height == height && pipeline.hdrFbo) {
+    return;
+  }
+
+  DestroyPostProcessTargets(pipeline);
+  pipeline.width = width;
+  pipeline.height = height;
+
+  glGenFramebuffers(1, &pipeline.hdrFbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, pipeline.hdrFbo);
+  pipeline.hdrColor = CreateColorTexture(width, height, GL_RGBA16F, GL_RGBA,
+                                         GL_FLOAT);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                         pipeline.hdrColor, 0);
+  glGenRenderbuffers(1, &pipeline.hdrDepth);
+  glBindRenderbuffer(GL_RENDERBUFFER, pipeline.hdrDepth);
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                            GL_RENDERBUFFER, pipeline.hdrDepth);
+
+  glGenFramebuffers(1, &pipeline.ldrFbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, pipeline.ldrFbo);
+  pipeline.ldrColor =
+      CreateColorTexture(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                         pipeline.ldrColor, 0);
+
+  glGenFramebuffers(2, pipeline.pingpongFbo);
+  glGenTextures(2, pipeline.pingpongColor);
+  for (int i = 0; i < 2; ++i) {
+    glBindFramebuffer(GL_FRAMEBUFFER, pipeline.pingpongFbo[i]);
+    glBindTexture(GL_TEXTURE_2D, pipeline.pingpongColor[i]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA,
+                 GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                           pipeline.pingpongColor[i], 0);
+  }
+
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+static void CreateFullScreenQuad(PostProcessPipeline &pipeline) {
+  if (pipeline.quadVao) {
+    return;
+  }
+
+  float quadVertices[] = {
+      // positions   // uv
+      -1.0f, -1.0f, 0.0f, 0.0f, 1.0f,  -1.0f, 1.0f, 0.0f,
+      1.0f,  1.0f, 1.0f, 1.0f,  -1.0f, -1.0f, 0.0f, 0.0f,
+      1.0f,  1.0f, 1.0f, 1.0f,  -1.0f, 1.0f,  0.0f, 1.0f};
+
+  glGenVertexArrays(1, &pipeline.quadVao);
+  glGenBuffers(1, &pipeline.quadVbo);
+  glBindVertexArray(pipeline.quadVao);
+  glBindBuffer(GL_ARRAY_BUFFER, pipeline.quadVbo);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices,
+               GL_STATIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                        reinterpret_cast<void *>(0));
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                        reinterpret_cast<void *>(2 * sizeof(float)));
+  glBindVertexArray(0);
+}
+
+static void DrawFullScreenQuad(const PostProcessPipeline &pipeline) {
+  glBindVertexArray(pipeline.quadVao);
+  glDrawArrays(GL_TRIANGLES, 0, 6);
+  glBindVertexArray(0);
+}
+
 void InitOpenGL(HWND hwnd) {
   hDC = GetDC(hwnd);
 
@@ -660,6 +809,37 @@ void InitOpenGL(HWND hwnd) {
   gCubeMesh = CreateCubeMesh();
   gSphereMesh = CreateSphereMesh(32, 16);
   gRingMesh = CreateRingMesh(64, 2.0f, 2.2f);
+
+  CreateFullScreenQuad(gPost);
+  gPost.extractShader =
+      new Shader("assets/shaders/fullscreen.vert",
+                 "assets/shaders/bloom_extract.frag");
+  gPost.blurShader =
+      new Shader("assets/shaders/fullscreen.vert",
+                 "assets/shaders/bloom_blur.frag");
+  gPost.tonemapShader =
+      new Shader("assets/shaders/fullscreen.vert",
+                 "assets/shaders/tonemap.frag");
+  gPost.fxaaShader =
+      new Shader("assets/shaders/fullscreen.vert", "assets/shaders/fxaa.frag");
+
+  if (gPost.extractShader && gPost.extractShader->IsValid()) {
+    gPost.extractShader->Use();
+    gPost.extractShader->SetInt("uScene", 0);
+  }
+  if (gPost.blurShader && gPost.blurShader->IsValid()) {
+    gPost.blurShader->Use();
+    gPost.blurShader->SetInt("uImage", 0);
+  }
+  if (gPost.tonemapShader && gPost.tonemapShader->IsValid()) {
+    gPost.tonemapShader->Use();
+    gPost.tonemapShader->SetInt("uHdrTexture", 0);
+    gPost.tonemapShader->SetInt("uBloomTexture", 1);
+  }
+  if (gPost.fxaaShader && gPost.fxaaShader->IsValid()) {
+    gPost.fxaaShader->Use();
+    gPost.fxaaShader->SetInt("uInput", 0);
+  }
 }
 
 void DrawCube(float size, float r, float g, float b) {
@@ -760,11 +940,27 @@ void DrawScene(int width, int height) {
     height = 1;
   glViewport(0, 0, width, height);
 
+  bool fxaaReady =
+      gPost.fxaaShader && gPost.fxaaShader->IsValid() && gPost.fxaaEnabled;
+  bool postReady =
+      gPost.extractShader && gPost.extractShader->IsValid() &&
+      gPost.blurShader && gPost.blurShader->IsValid() &&
+      gPost.tonemapShader && gPost.tonemapShader->IsValid() &&
+      gPost.quadVao != 0;
+
+  if (postReady) {
+    CreatePostProcessTargets(gPost, width, height);
+    glBindFramebuffer(GL_FRAMEBUFFER, gPost.hdrFbo);
+  } else {
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  }
+
   // Clear
   glClearColor(0.0f, 0.05f, 0.1f, 1.0f); // Dark sci-fi blue
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   if (!gShader || !gShader->IsValid()) {
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     SwapBuffers(hDC);
     return;
   }
@@ -797,6 +993,69 @@ void DrawScene(int width, int height) {
     DrawDisk((float)sysMon->GetDiskUsage());
   }
 
+  if (postReady) {
+    glDisable(GL_DEPTH_TEST);
+
+    // Bloom extraction pass.
+    glBindFramebuffer(GL_FRAMEBUFFER, gPost.pingpongFbo[0]);
+    gPost.extractShader->Use();
+    gPost.extractShader->SetFloat("uThreshold", 0.7f);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, gPost.hdrColor);
+    DrawFullScreenQuad(gPost);
+
+    // Blur ping-pong passes.
+    bool horizontal = true;
+    bool firstIteration = true;
+    const int blurPasses = 6;
+    gPost.blurShader->Use();
+    gPost.blurShader->SetVec2("uTexelSize", 1.0f / width,
+                              1.0f / height);
+    for (int i = 0; i < blurPasses; ++i) {
+      glBindFramebuffer(GL_FRAMEBUFFER,
+                        gPost.pingpongFbo[horizontal ? 1 : 0]);
+      gPost.blurShader->SetInt("uHorizontal", horizontal ? 1 : 0);
+      glActiveTexture(GL_TEXTURE0);
+      glBindTexture(GL_TEXTURE_2D,
+                    firstIteration ? gPost.pingpongColor[0]
+                                   : gPost.pingpongColor[horizontal ? 0 : 1]);
+      DrawFullScreenQuad(gPost);
+      horizontal = !horizontal;
+      if (firstIteration) {
+        firstIteration = false;
+      }
+    }
+
+    GLuint bloomTexture = gPost.pingpongColor[horizontal ? 0 : 1];
+
+    if (fxaaReady) {
+      glBindFramebuffer(GL_FRAMEBUFFER, gPost.ldrFbo);
+    } else {
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    gPost.tonemapShader->Use();
+    gPost.tonemapShader->SetFloat("uExposure", 1.0f);
+    gPost.tonemapShader->SetFloat("uBloomStrength", 0.8f);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, gPost.hdrColor);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, bloomTexture);
+    DrawFullScreenQuad(gPost);
+
+    if (fxaaReady) {
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      gPost.fxaaShader->Use();
+      gPost.fxaaShader->SetVec2("uTexelSize", 1.0f / width,
+                                1.0f / height);
+      glActiveTexture(GL_TEXTURE0);
+      glBindTexture(GL_TEXTURE_2D, gPost.ldrColor);
+      DrawFullScreenQuad(gPost);
+    }
+
+    glEnable(GL_DEPTH_TEST);
+  }
+
   SwapBuffers(hDC);
 }
 
@@ -817,6 +1076,32 @@ void CleanupOpenGL(HWND hwnd) {
   DestroyMesh(gCubeMesh);
   DestroyMesh(gSphereMesh);
   DestroyMesh(gRingMesh);
+
+  DestroyPostProcessTargets(gPost);
+  if (gPost.quadVbo) {
+    glDeleteBuffers(1, &gPost.quadVbo);
+    gPost.quadVbo = 0;
+  }
+  if (gPost.quadVao) {
+    glDeleteVertexArrays(1, &gPost.quadVao);
+    gPost.quadVao = 0;
+  }
+  if (gPost.extractShader) {
+    delete gPost.extractShader;
+    gPost.extractShader = nullptr;
+  }
+  if (gPost.blurShader) {
+    delete gPost.blurShader;
+    gPost.blurShader = nullptr;
+  }
+  if (gPost.tonemapShader) {
+    delete gPost.tonemapShader;
+    gPost.tonemapShader = nullptr;
+  }
+  if (gPost.fxaaShader) {
+    delete gPost.fxaaShader;
+    gPost.fxaaShader = nullptr;
+  }
 
   wglMakeCurrent(NULL, NULL);
   wglDeleteContext(hRC);
