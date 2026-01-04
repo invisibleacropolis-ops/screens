@@ -1,9 +1,10 @@
 #pragma once
 
 #include "SystemMonitor.h"
-#include <gl/GL.h>
-#include <gl/GLU.h>
 #include <windows.h>
+
+#include "glad/glad.h"
+#include <gl/GLU.h>
 
 
 void InitOpenGL(HWND hwnd);

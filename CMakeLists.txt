@@ -8,11 +8,17 @@ set(SOURCES
     src/main.cpp
     src/renderer.cpp
     src/renderer.h
+    src/glad/glad.c
+    src/glad/glad.h
     src/SystemMonitor.cpp
     src/SystemMonitor.h
 )
 
 add_executable(ScreenSaver WIN32 ${SOURCES})
+
+target_include_directories(ScreenSaver PRIVATE
+    src
+)
 
 # Link against Windows libraries
 target_link_libraries(ScreenSaver PRIVATE
