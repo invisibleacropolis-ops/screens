@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 # Add source files
 set(SOURCES
     src/main.cpp
+    src/Config.cpp
+    src/Config.h
     src/renderer.cpp
     src/renderer.h
     src/Shader.cpp

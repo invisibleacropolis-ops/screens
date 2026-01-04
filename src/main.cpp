@@ -2,11 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#include <sstream>
 #include <tchar.h>
 #include <vector>
 #include <windows.h>
 
 
+#include "Config.h"
 #include "renderer.h"
 
 // Globals
@@ -17,6 +19,7 @@ LPCTSTR szWindowClass = _T("ScreenSaverClass");
 // Forward declarations
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void ParseCommandLine(LPWSTR cmdLine, char &mode, HWND &parentHwnd);
+Config RunConfigDialog(const Config &currentConfig);
 
 int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                       LPWSTR lpCmdLine, int nCmdShow) {
@@ -28,8 +31,15 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   ParseCommandLine(lpCmdLine, mode, parentHwnd);
 
   if (mode == 'c') {
-    MessageBox(NULL, _T("No configuration necessary for this screensaver."),
-               szTitle, MB_OK | MB_ICONINFORMATION);
+    Config config = LoadConfig();
+    Config updated = RunConfigDialog(config);
+    if (!SaveConfig(updated)) {
+      MessageBox(NULL, _T("Failed to save configuration."), szTitle,
+                 MB_OK | MB_ICONERROR);
+    } else {
+      MessageBox(NULL, _T("Configuration saved."), szTitle,
+                 MB_OK | MB_ICONINFORMATION);
+    }
     return 0;
   }
 
@@ -81,6 +91,8 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   if (!hWnd)
     return 2;
 
+  Config config = LoadConfig();
+  SetConfig(config);
   InitOpenGL(hWnd);
 
   // Main loop
@@ -210,4 +222,60 @@ void ParseCommandLine(LPWSTR cmdLine, char &mode, HWND &parentHwnd) {
       }
     }
   }
+}
+
+Config RunConfigDialog(const Config &currentConfig) {
+  Config config = currentConfig;
+
+  std::wstringstream qualityPrompt;
+  qualityPrompt << L"Select quality tier:\n"
+                << L"Yes = High\n"
+                << L"No = Medium\n"
+                << L"Cancel = Low\n"
+                << L"(Current: ";
+  switch (currentConfig.quality) {
+  case QualityTier::Low:
+    qualityPrompt << L"Low";
+    break;
+  case QualityTier::Medium:
+    qualityPrompt << L"Medium";
+    break;
+  case QualityTier::High:
+    qualityPrompt << L"High";
+    break;
+  }
+  qualityPrompt << L")";
+
+  int qualityChoice =
+      MessageBox(NULL, qualityPrompt.str().c_str(), szTitle, MB_YESNOCANCEL);
+  if (qualityChoice == IDYES) {
+    config.quality = QualityTier::High;
+  } else if (qualityChoice == IDNO) {
+    config.quality = QualityTier::Medium;
+  } else if (qualityChoice == IDCANCEL) {
+    config.quality = QualityTier::Low;
+  }
+
+  std::wstringstream bloomPrompt;
+  bloomPrompt << L"Enable bloom?\n(Current: "
+              << (config.bloomEnabled ? L"On" : L"Off") << L")";
+  int bloomChoice = MessageBox(NULL, bloomPrompt.str().c_str(), szTitle,
+                               MB_YESNO | MB_ICONQUESTION);
+  config.bloomEnabled = (bloomChoice == IDYES);
+
+  std::wstringstream fogPrompt;
+  fogPrompt << L"Enable fog?\n(Current: "
+            << (config.fogEnabled ? L"On" : L"Off") << L")";
+  int fogChoice = MessageBox(NULL, fogPrompt.str().c_str(), szTitle,
+                             MB_YESNO | MB_ICONQUESTION);
+  config.fogEnabled = (fogChoice == IDYES);
+
+  std::wstringstream particlesPrompt;
+  particlesPrompt << L"Enable particles?\n(Current: "
+                  << (config.particlesEnabled ? L"On" : L"Off") << L")";
+  int particlesChoice = MessageBox(NULL, particlesPrompt.str().c_str(), szTitle,
+                                   MB_YESNO | MB_ICONQUESTION);
+  config.particlesEnabled = (particlesChoice == IDYES);
+
+  return config;
 }

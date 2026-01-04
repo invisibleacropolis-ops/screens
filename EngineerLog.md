@@ -72,3 +72,22 @@
 **Remaining TODO**:
 - Validate PDH counter availability on localized Windows installs.
 - Tune smoothing alpha to match visual response preferences.
+
+## Session: 2026-01-08
+**Agent**: ChatGPT
+**Task**: Config System + Runtime Quality Toggles
+**Changes**:
+- Added `src/Config.h`/`src/Config.cpp` with a lightweight INI-style configuration store for quality tier and effect toggles (bloom, fog, particles).
+  - Uses `screensaver_config.ini` in the executable directory for persistence.
+  - Includes helpers for parsing booleans, quality tier strings, and computing particle counts per tier.
+- Implemented a basic `/c` configuration dialog flow in `src/main.cpp` using Win32 `MessageBox` prompts.
+  - Saves the chosen settings and reports save failures to the user.
+- Wired configuration into the renderer pipeline in `src/renderer.cpp`:
+  - `SetConfig` updates FXAA/bloom enablement and influences particle counts.
+  - Fog uniforms are zeroed when fog is disabled to skip the shader fogging effect.
+  - Bloom passes are skipped when disabled, and tonemapping uses zero bloom strength.
+- Updated `CMakeLists.txt` to compile the new config sources.
+
+**Completion %**: 100%
+**Remaining TODO**:
+- Consider replacing the message-box-based config flow with a richer dialog resource when UI polish becomes a priority.
