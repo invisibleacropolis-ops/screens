@@ -60,3 +60,15 @@
 **Remaining TODO**:
 - Consider GPU compute/transform feedback simulation for larger particle counts when targeting OpenGL 4.3+.
 - Tune visual parameters (spawn rates, colors, sizes) based on desired aesthetic.
+
+## Session: 2026-01-04
+**Agent**: ChatGPT
+**Task**: Aggregate network PDH counters and smooth SystemMonitor metrics
+**Changes**:
+- Expanded network interface counters with `PdhExpandWildCardPathW` and aggregated all instances in `src/SystemMonitor.cpp`.
+- Added exponential moving average smoothing for CPU, RAM, disk, and network outputs before exposing getters in `src/SystemMonitor.h`/`src/SystemMonitor.cpp`.
+
+**Completion %**: 100%
+**Remaining TODO**:
+- Validate PDH counter availability on localized Windows installs.
+- Tune smoothing alpha to match visual response preferences.
