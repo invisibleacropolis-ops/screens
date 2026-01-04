@@ -1,5 +1,6 @@
 #include "renderer.h"
 #include "Shader.h"
+#include "Texture.h"
 #include <array>
 #include <cmath>
 #include <cstring>
@@ -109,7 +110,9 @@ struct PostProcessPipeline {
 };
 
 Shader *gShader = nullptr;
+Shader *gSkyboxShader = nullptr;
 GLuint gSceneUbo = 0;
+GLuint gEnvironmentMap = 0;
 Mesh gCubeMesh;
 Mesh gSphereMesh;
 Mesh gRingMesh;
@@ -120,8 +123,11 @@ PostProcessPipeline gPost{};
 struct SceneUniforms {
   float view[16];
   float proj[16];
-  float lightDir[3];
-  float ambient;
+  float lightDirAndAmbient[4];
+  float cameraPos[4];
+  float fogColor[4];
+  float fogParams[4];
+  float fogParams2[4];
 };
 
 static bool LoadWGLExtensions() {
@@ -789,6 +795,9 @@ void InitOpenGL(HWND hwnd) {
   }
 
   gShader = new Shader("assets/shaders/basic.vert", "assets/shaders/basic.frag");
+  gSkyboxShader =
+      new Shader("assets/shaders/environment.vert",
+                 "assets/shaders/environment.frag");
 
   glGenBuffers(1, &gSceneUbo);
   glBindBuffer(GL_UNIFORM_BUFFER, gSceneUbo);
@@ -801,7 +810,20 @@ void InitOpenGL(HWND hwnd) {
   if (gShader && gShader->IsValid()) {
     gShader->Use();
     gShader->BindUniformBlock("SceneData", 0);
+    gShader->SetInt("uEnvironmentMap", 0);
   }
+
+  if (gSkyboxShader && gSkyboxShader->IsValid()) {
+    gSkyboxShader->Use();
+    gSkyboxShader->BindUniformBlock("SceneData", 0);
+    gSkyboxShader->SetInt("uEnvironment", 0);
+  }
+
+  const std::array<std::string, 6> skyboxFaces = {
+      "assets/textures/px.ppm", "assets/textures/nx.ppm",
+      "assets/textures/py.ppm", "assets/textures/ny.ppm",
+      "assets/textures/pz.ppm", "assets/textures/nz.ppm"};
+  gEnvironmentMap = Texture::LoadCubeMap(skyboxFaces);
 
   sysMon = new SystemMonitor();
   sysMon->Initialize();
@@ -968,8 +990,8 @@ void DrawScene(int width, int height) {
   float aspect = static_cast<float>(width) / static_cast<float>(height);
   Mat4 projection =
       Mat4Perspective(45.0f * (kPi / 180.0f), aspect, 0.1f, 100.0f);
-  Mat4 view = Mat4LookAt({0.0f, 5.0f, 12.0f}, {0.0f, 0.0f, 0.0f},
-                         {0.0f, 1.0f, 0.0f});
+  Vec3 cameraPos = {0.0f, 5.0f, 12.0f};
+  Mat4 view = Mat4LookAt(cameraPos, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f});
 
   static float sceneRot = 0.0f;
   sceneRot += 0.2f;
@@ -978,14 +1000,47 @@ void DrawScene(int width, int height) {
   SceneUniforms scene{};
   std::memcpy(scene.view, view.m.data(), sizeof(scene.view));
   std::memcpy(scene.proj, projection.m.data(), sizeof(scene.proj));
-  scene.lightDir[0] = 0.2f;
-  scene.lightDir[1] = 1.0f;
-  scene.lightDir[2] = 0.3f;
-  scene.ambient = 0.25f;
+  scene.lightDirAndAmbient[0] = 0.2f;
+  scene.lightDirAndAmbient[1] = 1.0f;
+  scene.lightDirAndAmbient[2] = 0.3f;
+  scene.lightDirAndAmbient[3] = 0.25f;
+  scene.cameraPos[0] = cameraPos.x;
+  scene.cameraPos[1] = cameraPos.y;
+  scene.cameraPos[2] = cameraPos.z;
+  scene.cameraPos[3] = 1.0f;
+  scene.fogColor[0] = 0.08f;
+  scene.fogColor[1] = 0.1f;
+  scene.fogColor[2] = 0.16f;
+  scene.fogColor[3] = 1.0f;
+  scene.fogParams[0] = 0.045f;
+  scene.fogParams[1] = 0.25f;
+  scene.fogParams[2] = -1.0f;
+  scene.fogParams[3] = 0.8f;
+  scene.fogParams2[0] = 3.0f;
+  scene.fogParams2[1] = 0.35f;
+  scene.fogParams2[2] = 0.0f;
+  scene.fogParams2[3] = 0.0f;
 
   glBindBuffer(GL_UNIFORM_BUFFER, gSceneUbo);
   glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(SceneUniforms), &scene);
   glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+  if (gSkyboxShader && gSkyboxShader->IsValid() && gEnvironmentMap) {
+    glDepthFunc(GL_LEQUAL);
+    glDepthMask(GL_FALSE);
+    gSkyboxShader->Use();
+    gSkyboxShader->SetFloat("uScale", 60.0f);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, gEnvironmentMap);
+    DrawMesh(gCubeMesh);
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_LESS);
+  }
+
+  if (gEnvironmentMap) {
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, gEnvironmentMap);
+  }
 
   if (sysMon) {
     DrawCPU((float)sysMon->GetCpuUsage());
@@ -1101,6 +1156,16 @@ void CleanupOpenGL(HWND hwnd) {
   if (gPost.fxaaShader) {
     delete gPost.fxaaShader;
     gPost.fxaaShader = nullptr;
+  }
+
+  if (gSkyboxShader) {
+    delete gSkyboxShader;
+    gSkyboxShader = nullptr;
+  }
+
+  if (gEnvironmentMap) {
+    glDeleteTextures(1, &gEnvironmentMap);
+    gEnvironmentMap = 0;
   }
 
   wglMakeCurrent(NULL, NULL);

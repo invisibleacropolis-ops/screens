@@ -14,6 +14,9 @@ set(SOURCES
     src/glad/glad.h
     src/SystemMonitor.cpp
     src/SystemMonitor.h
+    src/Texture.cpp
+    src/Texture.h
+    src/stb_image.h
 )
 
 add_executable(ScreenSaver WIN32 ${SOURCES})
