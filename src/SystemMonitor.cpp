@@ -1,5 +1,7 @@
 #include "SystemMonitor.h"
 #include <iostream>
+#include <vector>
+#include <cwchar>
 
 #pragma comment(lib, "pdh.lib")
 
@@ -9,7 +11,6 @@ SystemMonitor::SystemMonitor() {
   diskQuery = NULL;
   diskTotal = NULL;
   netQuery = NULL;
-  netTotal = NULL;
 }
 
 SystemMonitor::~SystemMonitor() {
@@ -39,23 +40,29 @@ void SystemMonitor::Initialize() {
 
   // Initialize Network Query
   PdhOpenQueryW(NULL, 0, &netQuery);
-  // Note: Network interface wildcard is tricky because we want the sum.
-  // For simplicity in this V1, we might just grab the first interface or try to
-  // sum them. PdhAddEnglishCounter supports wildcards but reading them requires
-  // parsing arrays. Simplification: Let's try to add the Total for Network
-  // Interface if it exists, otherwise we might need to iterate. "Network
-  // Interface" usually requires specific instance names. Let's stick to a safe
-  // approach: Just init the query, we will need to handle multiple counters if
-  // we want accuracy. For MVP, let's try grabbing a common one or skip complex
-  // network agg for this exact moment if it risks crash. Actually, `\Network
-  // Interface(*)\Bytes Total/sec` is valid for PdhExpandWildCardPath, but
-  // complex to read. Let's use a simpler heuristic or just skip strict network
-  // for the VERY FIRST compile to ensure stability, then add it back. Use
-  // Memory as "Network" placeholder? No, let's stick to the plan but do it
-  // safely. We will just try one counter for now.
-  // PdhAddEnglishCounter(netQuery, L"\\Network Interface(*)\\Bytes Total/sec",
-  // NULL, &netTotal); (Wildcards in AddCounter produce a handle to the first or
-  // requires special read)
+  DWORD bufferSize = 0;
+  PDH_STATUS netStatus = PdhExpandWildCardPathW(
+      NULL, L"\\Network Interface(*)\\Bytes Total/sec", NULL, &bufferSize, 0);
+  if (netStatus == PDH_MORE_DATA && bufferSize > 0) {
+    std::vector<wchar_t> buffer(bufferSize);
+    netStatus = PdhExpandWildCardPathW(
+        NULL, L"\\Network Interface(*)\\Bytes Total/sec", buffer.data(),
+        &bufferSize, 0);
+    if (netStatus == ERROR_SUCCESS) {
+      const wchar_t *cursor = buffer.data();
+      while (*cursor != L'\0') {
+        PDH_HCOUNTER counter = NULL;
+        if (PdhAddEnglishCounterW(netQuery, cursor, 0, &counter) ==
+            ERROR_SUCCESS) {
+          netCounters.push_back(counter);
+        }
+        cursor += wcslen(cursor) + 1;
+      }
+    }
+  }
+  if (!netCounters.empty()) {
+    PdhCollectQueryData(netQuery);
+  }
 }
 
 void SystemMonitor::Update() {
@@ -65,18 +72,18 @@ void SystemMonitor::Update() {
   if (cpuQuery) {
     PdhCollectQueryData(cpuQuery);
     PdhGetFormattedCounterValue(cpuTotal, PDH_FMT_DOUBLE, NULL, &counterVal);
-    cpuUsage = counterVal.doubleValue;
+    rawCpuUsage = counterVal.doubleValue;
   }
 
   // Disk
   if (diskQuery) {
     PdhCollectQueryData(diskQuery);
     PdhGetFormattedCounterValue(diskTotal, PDH_FMT_DOUBLE, NULL, &counterVal);
-    diskUsage = counterVal.doubleValue;
+    rawDiskUsage = counterVal.doubleValue;
     // Clamp to 100 as disk time can exceed 100% physically (multiple
     // disks/queues)
-    if (diskUsage > 100.0)
-      diskUsage = 100.0;
+    if (rawDiskUsage > 100.0)
+      rawDiskUsage = 100.0;
   }
 
   // RAM (No PDH needed for basic usage)
@@ -84,8 +91,35 @@ void SystemMonitor::Update() {
   memInfo.dwLength = sizeof(MEMORYSTATUSEX);
   GlobalMemoryStatusEx(&memInfo);
   // dwMemoryLoad is physically used %
-  ramUsage = (double)memInfo.dwMemoryLoad;
+  rawRamUsage = (double)memInfo.dwMemoryLoad;
 
-  // Network (stubbed for now to avoid wildcard complexity in first pass)
-  networkBytesPerSec = 0.0;
+  // Network
+  rawNetworkBytesPerSec = 0.0;
+  if (netQuery && !netCounters.empty()) {
+    PdhCollectQueryData(netQuery);
+    for (PDH_HCOUNTER counter : netCounters) {
+      if (PdhGetFormattedCounterValue(counter, PDH_FMT_DOUBLE, NULL,
+                                      &counterVal) == ERROR_SUCCESS) {
+        rawNetworkBytesPerSec += counterVal.doubleValue;
+      }
+    }
+  }
+
+  // Apply exponential moving average smoothing to stabilize visual response.
+  if (!smoothingInitialized) {
+    cpuUsage = rawCpuUsage;
+    ramUsage = rawRamUsage;
+    diskUsage = rawDiskUsage;
+    networkBytesPerSec = rawNetworkBytesPerSec;
+    smoothingInitialized = true;
+  } else {
+    cpuUsage =
+        smoothingAlpha * rawCpuUsage + (1.0 - smoothingAlpha) * cpuUsage;
+    ramUsage =
+        smoothingAlpha * rawRamUsage + (1.0 - smoothingAlpha) * ramUsage;
+    diskUsage =
+        smoothingAlpha * rawDiskUsage + (1.0 - smoothingAlpha) * diskUsage;
+    networkBytesPerSec = smoothingAlpha * rawNetworkBytesPerSec +
+                         (1.0 - smoothingAlpha) * networkBytesPerSec;
+  }
 }
