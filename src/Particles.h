@@ -21,7 +21,7 @@ public:
 
   bool Initialize();
   void Update(float dtSeconds, const SystemMonitor &monitor);
-  void Draw() const;
+  void Draw();
   void Cleanup();
 
 private:

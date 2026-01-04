@@ -1,5 +1,6 @@
 #include "renderer.h"
 #include "Config.h"
+#include "DiagTest.h"
 #include "Particles.h"
 #include "Shader.h"
 #include "Texture.h"
@@ -61,7 +62,7 @@
 #endif
 
 typedef HGLRC(WINAPI *PFNWGLCREATECONTEXTATTRIBSARBPROC)(HDC, HGLRC,
-                                                        const int *);
+                                                         const int *);
 typedef BOOL(WINAPI *PFNWGLCHOOSEPIXELFORMATARBPROC)(HDC, const int *,
                                                      const FLOAT *, UINT, int *,
                                                      UINT *);
@@ -152,9 +153,8 @@ static bool LoadWGLExtensions() {
 
   RegisterClass(&wc);
 
-  HWND dummyWindow = CreateWindow(wc.lpszClassName, _T(""),
-                                  WS_OVERLAPPEDWINDOW, 0, 0, 1, 1, NULL, NULL,
-                                  wc.hInstance, NULL);
+  HWND dummyWindow = CreateWindow(wc.lpszClassName, _T(""), WS_OVERLAPPEDWINDOW,
+                                  0, 0, 1, 1, NULL, NULL, wc.hInstance, NULL);
   if (!dummyWindow) {
     return false;
   }
@@ -180,9 +180,8 @@ static bool LoadWGLExtensions() {
   wglCreateContextAttribsARB =
       (PFNWGLCREATECONTEXTATTRIBSARBPROC)wglGetProcAddress(
           "wglCreateContextAttribsARB");
-  wglChoosePixelFormatARB =
-      (PFNWGLCHOOSEPIXELFORMATARBPROC)wglGetProcAddress(
-          "wglChoosePixelFormatARB");
+  wglChoosePixelFormatARB = (PFNWGLCHOOSEPIXELFORMATARBPROC)wglGetProcAddress(
+      "wglChoosePixelFormatARB");
 
   wglMakeCurrent(NULL, NULL);
   wglDeleteContext(dummyRC);
@@ -194,20 +193,18 @@ static bool LoadWGLExtensions() {
 }
 
 static bool SetPixelFormatWithAttributes(HDC dc, bool requestSrgb,
-                                         bool requestMsaa,
-                                         bool &srgbEnabled) {
+                                         bool requestMsaa, bool &srgbEnabled) {
   if (!wglChoosePixelFormatARB) {
     return false;
   }
 
-  std::vector<int> attribs = {
-      WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
-      WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
-      WGL_DOUBLE_BUFFER_ARB, GL_TRUE,
-      WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
-      WGL_COLOR_BITS_ARB, 24,
-      WGL_DEPTH_BITS_ARB, 24,
-      WGL_STENCIL_BITS_ARB, 8};
+  std::vector<int> attribs = {WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
+                              WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
+                              WGL_DOUBLE_BUFFER_ARB,  GL_TRUE,
+                              WGL_PIXEL_TYPE_ARB,     WGL_TYPE_RGBA_ARB,
+                              WGL_COLOR_BITS_ARB,     24,
+                              WGL_DEPTH_BITS_ARB,     24,
+                              WGL_STENCIL_BITS_ARB,   8};
 
   if (requestSrgb) {
     attribs.push_back(WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB);
@@ -319,8 +316,7 @@ static Vec3 Vec3Sub(const Vec3 &a, const Vec3 &b) {
 }
 
 static Vec3 Vec3Cross(const Vec3 &a, const Vec3 &b) {
-  return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z,
-          a.x * b.y - a.y * b.x};
+  return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
 }
 
 static Vec3 Vec3Normalize(const Vec3 &v) {
@@ -343,10 +339,8 @@ static Mat4 Mat4Multiply(const Mat4 &a, const Mat4 &b) {
   for (int col = 0; col < 4; ++col) {
     for (int row = 0; row < 4; ++row) {
       out.m[row + col * 4] =
-          a.m[row + 0] * b.m[col * 4 + 0] +
-          a.m[row + 4] * b.m[col * 4 + 1] +
-          a.m[row + 8] * b.m[col * 4 + 2] +
-          a.m[row + 12] * b.m[col * 4 + 3];
+          a.m[row + 0] * b.m[col * 4 + 0] + a.m[row + 4] * b.m[col * 4 + 1] +
+          a.m[row + 8] * b.m[col * 4 + 2] + a.m[row + 12] * b.m[col * 4 + 3];
     }
   }
   return out;
@@ -405,9 +399,21 @@ static Mat4 Mat4Perspective(float fovRadians, float aspect, float nearPlane,
                             float farPlane) {
   Mat4 out{};
   float f = 1.0f / std::tan(fovRadians / 2.0f);
-  out.m = {f / aspect, 0.0f, 0.0f, 0.0f, 0.0f, f, 0.0f, 0.0f,
-           0.0f, 0.0f, (farPlane + nearPlane) / (nearPlane - farPlane), -1.0f,
-           0.0f, 0.0f, (2.0f * farPlane * nearPlane) / (nearPlane - farPlane),
+  out.m = {f / aspect,
+           0.0f,
+           0.0f,
+           0.0f,
+           0.0f,
+           f,
+           0.0f,
+           0.0f,
+           0.0f,
+           0.0f,
+           (farPlane + nearPlane) / (nearPlane - farPlane),
+           -1.0f,
+           0.0f,
+           0.0f,
+           (2.0f * farPlane * nearPlane) / (nearPlane - farPlane),
            0.0f};
   return out;
 }
@@ -437,35 +443,35 @@ static Mesh CreateCubeMesh() {
   Mesh mesh{};
   float vertices[] = {
       // positions          // normals
-      -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f,  0.5f, -0.5f, 0.5f,
-      0.0f,  0.0f,  1.0f, 0.5f, 0.5f,  0.5f, 0.0f,  0.0f,  1.0f,
-      -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f,  0.5f, 0.5f,  0.5f,
-      0.0f,  0.0f,  1.0f, -0.5f, 0.5f, 0.5f, 0.0f,  0.0f,  1.0f,
+      -0.5f, -0.5f, 0.5f,  0.0f,  0.0f,  1.0f,  0.5f,  -0.5f, 0.5f,
+      0.0f,  0.0f,  1.0f,  0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,
+      -0.5f, -0.5f, 0.5f,  0.0f,  0.0f,  1.0f,  0.5f,  0.5f,  0.5f,
+      0.0f,  0.0f,  1.0f,  -0.5f, 0.5f,  0.5f,  0.0f,  0.0f,  1.0f,
 
-      -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, -0.5f, 0.5f,  -0.5f,
-      0.0f,  0.0f,  -1.0f, 0.5f, 0.5f,  -0.5f, 0.0f,  0.0f,  -1.0f,
-      -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.5f,  0.5f,  -0.5f,
+      -0.5f, -0.5f, -0.5f, 0.0f,  0.0f,  -1.0f, -0.5f, 0.5f,  -0.5f,
+      0.0f,  0.0f,  -1.0f, 0.5f,  0.5f,  -0.5f, 0.0f,  0.0f,  -1.0f,
+      -0.5f, -0.5f, -0.5f, 0.0f,  0.0f,  -1.0f, 0.5f,  0.5f,  -0.5f,
       0.0f,  0.0f,  -1.0f, 0.5f,  -0.5f, -0.5f, 0.0f,  0.0f,  -1.0f,
 
-      -0.5f, 0.5f,  -0.5f, 0.0f, 1.0f, 0.0f,  -0.5f, 0.5f,  0.5f,
-      0.0f,  1.0f,  0.0f, 0.5f,  0.5f,  0.5f, 0.0f,  1.0f,  0.0f,
-      -0.5f, 0.5f,  -0.5f, 0.0f, 1.0f, 0.0f,  0.5f,  0.5f,  0.5f,
-      0.0f,  1.0f,  0.0f, 0.5f,  0.5f,  -0.5f, 0.0f,  1.0f,  0.0f,
+      -0.5f, 0.5f,  -0.5f, 0.0f,  1.0f,  0.0f,  -0.5f, 0.5f,  0.5f,
+      0.0f,  1.0f,  0.0f,  0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,
+      -0.5f, 0.5f,  -0.5f, 0.0f,  1.0f,  0.0f,  0.5f,  0.5f,  0.5f,
+      0.0f,  1.0f,  0.0f,  0.5f,  0.5f,  -0.5f, 0.0f,  1.0f,  0.0f,
 
-      -0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 0.5f,  -0.5f, -0.5f,
-      0.0f,  -1.0f, 0.0f, 0.5f,  -0.5f, 0.5f, 0.0f,  -1.0f, 0.0f,
-      -0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 0.5f,  -0.5f, 0.5f,
-      0.0f,  -1.0f, 0.0f, -0.5f, -0.5f, 0.5f, 0.0f,  -1.0f, 0.0f,
+      -0.5f, -0.5f, -0.5f, 0.0f,  -1.0f, 0.0f,  0.5f,  -0.5f, -0.5f,
+      0.0f,  -1.0f, 0.0f,  0.5f,  -0.5f, 0.5f,  0.0f,  -1.0f, 0.0f,
+      -0.5f, -0.5f, -0.5f, 0.0f,  -1.0f, 0.0f,  0.5f,  -0.5f, 0.5f,
+      0.0f,  -1.0f, 0.0f,  -0.5f, -0.5f, 0.5f,  0.0f,  -1.0f, 0.0f,
 
-      0.5f,  -0.5f, -0.5f, 1.0f, 0.0f, 0.0f,  0.5f,  0.5f,  -0.5f,
-      1.0f,  0.0f,  0.0f, 0.5f,  0.5f,  0.5f, 1.0f,  0.0f,  0.0f,
-      0.5f,  -0.5f, -0.5f, 1.0f, 0.0f, 0.0f,  0.5f,  0.5f,  0.5f,
-      1.0f,  0.0f,  0.0f, 0.5f,  -0.5f, 0.5f, 1.0f,  0.0f,  0.0f,
+      0.5f,  -0.5f, -0.5f, 1.0f,  0.0f,  0.0f,  0.5f,  0.5f,  -0.5f,
+      1.0f,  0.0f,  0.0f,  0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,
+      0.5f,  -0.5f, -0.5f, 1.0f,  0.0f,  0.0f,  0.5f,  0.5f,  0.5f,
+      1.0f,  0.0f,  0.0f,  0.5f,  -0.5f, 0.5f,  1.0f,  0.0f,  0.0f,
 
-      -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f, -0.5f, -0.5f, 0.5f,
-      -1.0f, 0.0f,  0.0f, -0.5f, 0.5f,  0.5f, -1.0f, 0.0f,  0.0f,
-      -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f, -0.5f, 0.5f,  0.5f,
-      -1.0f, 0.0f,  0.0f, -0.5f, 0.5f,  -0.5f, -1.0f, 0.0f,  0.0f};
+      -0.5f, -0.5f, -0.5f, -1.0f, 0.0f,  0.0f,  -0.5f, -0.5f, 0.5f,
+      -1.0f, 0.0f,  0.0f,  -0.5f, 0.5f,  0.5f,  -1.0f, 0.0f,  0.0f,
+      -0.5f, -0.5f, -0.5f, -1.0f, 0.0f,  0.0f,  -0.5f, 0.5f,  0.5f,
+      -1.0f, 0.0f,  0.0f,  -0.5f, 0.5f,  -0.5f, -1.0f, 0.0f,  0.0f};
 
   glGenVertexArrays(1, &mesh.vao);
   glGenBuffers(1, &mesh.vbo);
@@ -480,8 +486,8 @@ static Mesh CreateCubeMesh() {
                         reinterpret_cast<void *>(3 * sizeof(float)));
   glBindVertexArray(0);
 
-  mesh.vertexCount = static_cast<GLsizei>(sizeof(vertices) /
-                                          (6 * sizeof(float)));
+  mesh.vertexCount =
+      static_cast<GLsizei>(sizeof(vertices) / (6 * sizeof(float)));
   mesh.indexed = false;
   return mesh;
 }
@@ -536,8 +542,8 @@ static Mesh CreateSphereMesh(int slices, int stacks) {
 
   glBindVertexArray(mesh.vao);
   glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
-  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(),
-               GL_STATIC_DRAW);
+  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float),
+               vertices.data(), GL_STATIC_DRAW);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.ebo);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
                indices.data(), GL_STATIC_DRAW);
@@ -570,10 +576,8 @@ static Mesh CreateRingMesh(int segments, float innerRadius, float outerRadius) {
     float outerX = outerRadius * c;
     float outerY = outerRadius * s;
 
-    vertices.insert(vertices.end(),
-                    {innerX, innerY, 0.0f, 0.0f, 0.0f, 1.0f});
-    vertices.insert(vertices.end(),
-                    {outerX, outerY, 0.0f, 0.0f, 0.0f, 1.0f});
+    vertices.insert(vertices.end(), {innerX, innerY, 0.0f, 0.0f, 0.0f, 1.0f});
+    vertices.insert(vertices.end(), {outerX, outerY, 0.0f, 0.0f, 0.0f, 1.0f});
   }
 
   for (int i = 0; i < segments; ++i) {
@@ -592,8 +596,8 @@ static Mesh CreateRingMesh(int segments, float innerRadius, float outerRadius) {
 
   glBindVertexArray(mesh.vao);
   glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
-  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(),
-               GL_STATIC_DRAW);
+  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float),
+               vertices.data(), GL_STATIC_DRAW);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.ebo);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
                indices.data(), GL_STATIC_DRAW);
@@ -695,8 +699,8 @@ static void CreatePostProcessTargets(PostProcessPipeline &pipeline, int width,
 
   glGenFramebuffers(1, &pipeline.hdrFbo);
   glBindFramebuffer(GL_FRAMEBUFFER, pipeline.hdrFbo);
-  pipeline.hdrColor = CreateColorTexture(width, height, GL_RGBA16F, GL_RGBA,
-                                         GL_FLOAT);
+  pipeline.hdrColor =
+      CreateColorTexture(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT);
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
                          pipeline.hdrColor, 0);
   glGenRenderbuffers(1, &pipeline.hdrDepth);
@@ -735,11 +739,10 @@ static void CreateFullScreenQuad(PostProcessPipeline &pipeline) {
     return;
   }
 
-  float quadVertices[] = {
-      // positions   // uv
-      -1.0f, -1.0f, 0.0f, 0.0f, 1.0f,  -1.0f, 1.0f, 0.0f,
-      1.0f,  1.0f, 1.0f, 1.0f,  -1.0f, -1.0f, 0.0f, 0.0f,
-      1.0f,  1.0f, 1.0f, 1.0f,  -1.0f, 1.0f,  0.0f, 1.0f};
+  float quadVertices[] = {// positions   // uv
+                          -1.0f, -1.0f, 0.0f, 0.0f, 1.0f,  -1.0f, 1.0f, 0.0f,
+                          1.0f,  1.0f,  1.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f,
+                          1.0f,  1.0f,  1.0f, 1.0f, -1.0f, 1.0f,  0.0f, 1.0f};
 
   glGenVertexArrays(1, &pipeline.quadVao);
   glGenBuffers(1, &pipeline.quadVbo);
@@ -796,24 +799,26 @@ void InitOpenGL(HWND hwnd) {
     OutputDebugStringA("GLAD failed to initialize.\n");
   }
 
+  // Run diagnostics to identify issues
+  DiagTest::RunAllDiagnostics();
+
   glEnable(GL_DEPTH_TEST);
 
   if (srgbEnabled) {
     glEnable(GL_FRAMEBUFFER_SRGB);
   }
 
-  gShader = new Shader("assets/shaders/basic.vert", "assets/shaders/basic.frag");
-  gSkyboxShader =
-      new Shader("assets/shaders/environment.vert",
-                 "assets/shaders/environment.frag");
+  gShader =
+      new Shader("assets/shaders/basic.vert", "assets/shaders/basic.frag");
+  gSkyboxShader = new Shader("assets/shaders/environment.vert",
+                             "assets/shaders/environment.frag");
 
   glGenBuffers(1, &gSceneUbo);
   glBindBuffer(GL_UNIFORM_BUFFER, gSceneUbo);
   glBufferData(GL_UNIFORM_BUFFER, sizeof(SceneUniforms), nullptr,
                GL_DYNAMIC_DRAW);
   glBindBuffer(GL_UNIFORM_BUFFER, 0);
-  glBindBufferRange(GL_UNIFORM_BUFFER, 0, gSceneUbo, 0,
-                    sizeof(SceneUniforms));
+  glBindBufferRange(GL_UNIFORM_BUFFER, 0, gSceneUbo, 0, sizeof(SceneUniforms));
 
   if (gShader && gShader->IsValid()) {
     gShader->Use();
@@ -853,15 +858,12 @@ void InitOpenGL(HWND hwnd) {
   }
 
   CreateFullScreenQuad(gPost);
-  gPost.extractShader =
-      new Shader("assets/shaders/fullscreen.vert",
-                 "assets/shaders/bloom_extract.frag");
-  gPost.blurShader =
-      new Shader("assets/shaders/fullscreen.vert",
-                 "assets/shaders/bloom_blur.frag");
-  gPost.tonemapShader =
-      new Shader("assets/shaders/fullscreen.vert",
-                 "assets/shaders/tonemap.frag");
+  gPost.extractShader = new Shader("assets/shaders/fullscreen.vert",
+                                   "assets/shaders/bloom_extract.frag");
+  gPost.blurShader = new Shader("assets/shaders/fullscreen.vert",
+                                "assets/shaders/bloom_blur.frag");
+  gPost.tonemapShader = new Shader("assets/shaders/fullscreen.vert",
+                                   "assets/shaders/tonemap.frag");
   gPost.fxaaShader =
       new Shader("assets/shaders/fullscreen.vert", "assets/shaders/fxaa.frag");
 
@@ -964,7 +966,8 @@ void DrawDisk(float usage) {
   }
 
   float ringScale = (2.2f + (u * 0.5f)) / 2.2f;
-  Mat4 rotate = Mat4Multiply(Mat4RotateX(1.5707964f), Mat4RotateZ(rot * 0.0174533f));
+  Mat4 rotate =
+      Mat4Multiply(Mat4RotateX(1.5707964f), Mat4RotateZ(rot * 0.0174533f));
   Mat4 scale = Mat4Scale(ringScale, ringScale, ringScale);
   Mat4 model = Mat4Multiply(gSceneTransform, Mat4Multiply(rotate, scale));
 
@@ -979,9 +982,9 @@ void DrawScene(int width, int height) {
   QueryPerformanceCounter(&now);
   float dtSeconds = 0.016f;
   if (gHasFrameTime && gFrameTimerFreq.QuadPart > 0) {
-    dtSeconds = static_cast<float>(
-        (now.QuadPart - gLastFrameTime.QuadPart) /
-        static_cast<double>(gFrameTimerFreq.QuadPart));
+    dtSeconds =
+        static_cast<float>((now.QuadPart - gLastFrameTime.QuadPart) /
+                           static_cast<double>(gFrameTimerFreq.QuadPart));
   } else {
     gHasFrameTime = true;
   }
@@ -994,11 +997,11 @@ void DrawScene(int width, int height) {
     height = 1;
   glViewport(0, 0, width, height);
 
-  bool fxaaReady =
-      gPost.fxaaShader && gPost.fxaaShader->IsValid() && gPost.fxaaEnabled;
+  bool fxaaReady = gPost.fxaaShader && gPost.fxaaShader->IsValid() &&
+                   gPost.fxaaEnabled && gConfig.fxaaEnabled;
   bool bloomReady = gPost.extractShader && gPost.extractShader->IsValid() &&
                     gPost.blurShader && gPost.blurShader->IsValid() &&
-                    gPost.bloomEnabled;
+                    gPost.bloomEnabled && gConfig.bloomEnabled;
   bool postReady = gPost.tonemapShader && gPost.tonemapShader->IsValid() &&
                    gPost.quadVao != 0;
 
@@ -1009,8 +1012,11 @@ void DrawScene(int width, int height) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
   }
 
-  // Clear
-  glClearColor(0.0f, 0.05f, 0.1f, 1.0f); // Dark sci-fi blue
+  // Clear - use configured background color
+  float bgR = gConfig.bgColorR / 255.0f;
+  float bgG = gConfig.bgColorG / 255.0f;
+  float bgB = gConfig.bgColorB / 255.0f;
+  glClearColor(bgR, bgG, bgB, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   if (!gShader || !gShader->IsValid()) {
@@ -1020,13 +1026,13 @@ void DrawScene(int width, int height) {
   }
 
   float aspect = static_cast<float>(width) / static_cast<float>(height);
-  Mat4 projection =
-      Mat4Perspective(45.0f * (kPi / 180.0f), aspect, 0.1f, 100.0f);
-  Vec3 cameraPos = {0.0f, 5.0f, 12.0f};
+  Mat4 projection = Mat4Perspective(gConfig.fieldOfView * (kPi / 180.0f),
+                                    aspect, 0.1f, 100.0f);
+  Vec3 cameraPos = {0.0f, gConfig.cameraHeight, gConfig.cameraDistance};
   Mat4 view = Mat4LookAt(cameraPos, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f});
 
   static float sceneRot = 0.0f;
-  sceneRot += 0.2f;
+  sceneRot += gConfig.rotationSpeed;
   gSceneTransform = Mat4RotateY(sceneRot * (kPi / 180.0f));
 
   SceneUniforms scene{};
@@ -1045,7 +1051,7 @@ void DrawScene(int width, int height) {
     scene.fogColor[1] = 0.1f;
     scene.fogColor[2] = 0.16f;
     scene.fogColor[3] = 1.0f;
-    scene.fogParams[0] = 0.045f;
+    scene.fogParams[0] = gConfig.fogDensity;
     scene.fogParams[1] = 0.25f;
     scene.fogParams[2] = -1.0f;
     scene.fogParams[3] = 0.8f;
@@ -1072,7 +1078,8 @@ void DrawScene(int width, int height) {
   glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(SceneUniforms), &scene);
   glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-  if (gSkyboxShader && gSkyboxShader->IsValid() && gEnvironmentMap) {
+  if (gSkyboxShader && gSkyboxShader->IsValid() && gEnvironmentMap &&
+      gConfig.skyboxEnabled) {
     glDepthFunc(GL_LEQUAL);
     glDepthMask(GL_FALSE);
     gSkyboxShader->Use();
@@ -1108,7 +1115,7 @@ void DrawScene(int width, int height) {
       // Bloom extraction pass.
       glBindFramebuffer(GL_FRAMEBUFFER, gPost.pingpongFbo[0]);
       gPost.extractShader->Use();
-      gPost.extractShader->SetFloat("uThreshold", 0.7f);
+      gPost.extractShader->SetFloat("uThreshold", gConfig.bloomThreshold);
       glActiveTexture(GL_TEXTURE0);
       glBindTexture(GL_TEXTURE_2D, gPost.hdrColor);
       DrawFullScreenQuad(gPost);
@@ -1118,8 +1125,7 @@ void DrawScene(int width, int height) {
       bool firstIteration = true;
       const int blurPasses = 6;
       gPost.blurShader->Use();
-      gPost.blurShader->SetVec2("uTexelSize", 1.0f / width,
-                                1.0f / height);
+      gPost.blurShader->SetVec2("uTexelSize", 1.0f / width, 1.0f / height);
       for (int i = 0; i < blurPasses; ++i) {
         glBindFramebuffer(GL_FRAMEBUFFER,
                           gPost.pingpongFbo[horizontal ? 1 : 0]);
@@ -1145,9 +1151,9 @@ void DrawScene(int width, int height) {
     }
 
     gPost.tonemapShader->Use();
-    gPost.tonemapShader->SetFloat("uExposure", 1.0f);
+    gPost.tonemapShader->SetFloat("uExposure", gConfig.exposure);
     gPost.tonemapShader->SetFloat("uBloomStrength",
-                                  bloomReady ? 0.8f : 0.0f);
+                                  bloomReady ? gConfig.bloomStrength : 0.0f);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, gPost.hdrColor);
     glActiveTexture(GL_TEXTURE1);
@@ -1157,8 +1163,7 @@ void DrawScene(int width, int height) {
     if (fxaaReady) {
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
       gPost.fxaaShader->Use();
-      gPost.fxaaShader->SetVec2("uTexelSize", 1.0f / width,
-                                1.0f / height);
+      gPost.fxaaShader->SetVec2("uTexelSize", 1.0f / width, 1.0f / height);
       glActiveTexture(GL_TEXTURE0);
       glBindTexture(GL_TEXTURE_2D, gPost.ldrColor);
       DrawFullScreenQuad(gPost);

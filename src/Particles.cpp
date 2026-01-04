@@ -10,13 +10,11 @@ namespace {
 constexpr float kTwoPi = 6.28318530718f;
 constexpr float kMinLife = 1.0f;
 constexpr float kMaxLife = 3.5f;
-}
+} // namespace
 
 Particles::Particles(std::size_t maxParticles)
-    : maxParticles_(maxParticles),
-      particles_(maxParticles),
-      instances_(maxParticles),
-      rng_(std::random_device{}()),
+    : maxParticles_(maxParticles), particles_(maxParticles),
+      instances_(maxParticles), rng_(std::random_device{}()),
       uniform01_(0.0f, 1.0f) {}
 
 Particles::~Particles() { Cleanup(); }
@@ -51,13 +49,15 @@ bool Particles::Initialize() {
                GL_DYNAMIC_DRAW);
 
   glEnableVertexAttribArray(1);
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                        reinterpret_cast<void *>(offsetof(InstanceData, position)));
+  glVertexAttribPointer(
+      1, 3, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
+      reinterpret_cast<void *>(offsetof(InstanceData, position)));
   glVertexAttribDivisor(1, 1);
 
   glEnableVertexAttribArray(2);
-  glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                        reinterpret_cast<void *>(offsetof(InstanceData, color)));
+  glVertexAttribPointer(
+      2, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
+      reinterpret_cast<void *>(offsetof(InstanceData, color)));
   glVertexAttribDivisor(2, 1);
 
   glEnableVertexAttribArray(3);
@@ -142,8 +142,8 @@ void Particles::Update(float dtSeconds, const SystemMonitor &monitor) {
   const float cpuTarget = static_cast<float>(monitor.GetCpuUsage() / 100.0);
   const float ramTarget = static_cast<float>(monitor.GetRamUsage() / 100.0);
   const float diskTarget = static_cast<float>(monitor.GetDiskUsage() / 100.0);
-  const float netTarget = static_cast<float>(monitor.GetNetworkBytesPerSec() /
-                                            (1024.0 * 1024.0));
+  const float netTarget =
+      static_cast<float>(monitor.GetNetworkBytesPerSec() / (1024.0 * 1024.0));
 
   smoothed_.cpu = SmoothValue(smoothed_.cpu, cpuTarget, dtSeconds, 2.5f, 1.5f);
   smoothed_.ram = SmoothValue(smoothed_.ram, ramTarget, dtSeconds, 2.0f, 1.2f);
@@ -152,7 +152,8 @@ void Particles::Update(float dtSeconds, const SystemMonitor &monitor) {
   smoothed_.net = SmoothValue(smoothed_.net, std::min(netTarget, 1.0f),
                               dtSeconds, 3.0f, 1.5f);
 
-  const float spawnRate = 40.0f + smoothed_.cpu * 200.0f + smoothed_.net * 80.0f;
+  const float spawnRate =
+      40.0f + smoothed_.cpu * 200.0f + smoothed_.net * 80.0f;
   spawnAccumulator_ += spawnRate * dtSeconds;
 
   while (spawnAccumulator_ >= 1.0f) {
@@ -187,7 +188,7 @@ void Particles::Update(float dtSeconds, const SystemMonitor &monitor) {
   }
 }
 
-void Particles::Draw() const {
+void Particles::Draw() {
   if (!shader_ || !shader_->IsValid() || liveCount_ == 0 || !vao_) {
     return;
   }
@@ -216,8 +217,7 @@ void Particles::Draw() const {
 
   shader_->Use();
   glBindVertexArray(vao_);
-  glDrawArraysInstanced(GL_POINTS, 0, 1,
-                        static_cast<GLsizei>(liveCount_));
+  glDrawArraysInstanced(GL_POINTS, 0, 1, static_cast<GLsizei>(liveCount_));
 
   glBindVertexArray(0);
   glDepthMask(GL_TRUE);

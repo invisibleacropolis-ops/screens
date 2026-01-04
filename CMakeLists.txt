@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ScreenSaver CXX)
+project(ScreenSaver C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -20,7 +20,11 @@ set(SOURCES
     src/SystemMonitor.h
     src/Texture.cpp
     src/Texture.h
+    src/DiagTest.h
     src/stb_image.h
+    src/resource.h
+    src/SettingsDialog.h
+    src/SettingsDialog.cpp
 )
 
 add_executable(ScreenSaver WIN32 ${SOURCES})
