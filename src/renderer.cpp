@@ -1,4 +1,5 @@
 #include "renderer.h"
+#include "Config.h"
 #include "Particles.h"
 #include "Shader.h"
 #include "Texture.h"
@@ -72,6 +73,7 @@ HGLRC hRC = NULL;
 HDC hDC = NULL;
 SystemMonitor *sysMon = nullptr;
 Particles *gParticles = nullptr;
+Config gConfig{};
 
 struct Vec3 {
   float x;
@@ -109,6 +111,7 @@ struct PostProcessPipeline {
   Shader *tonemapShader = nullptr;
   Shader *fxaaShader = nullptr;
   bool fxaaEnabled = true;
+  bool bloomEnabled = true;
 };
 
 Shader *gShader = nullptr;
@@ -840,8 +843,14 @@ void InitOpenGL(HWND hwnd) {
   gSphereMesh = CreateSphereMesh(32, 16);
   gRingMesh = CreateRingMesh(64, 2.0f, 2.2f);
 
-  gParticles = new Particles(3000);
-  gParticles->Initialize();
+  const int particleCount = GetParticleCount(gConfig);
+  if (particleCount > 0) {
+    gParticles = new Particles(static_cast<std::size_t>(particleCount));
+    if (!gParticles->Initialize()) {
+      delete gParticles;
+      gParticles = nullptr;
+    }
+  }
 
   CreateFullScreenQuad(gPost);
   gPost.extractShader =
@@ -987,11 +996,11 @@ void DrawScene(int width, int height) {
 
   bool fxaaReady =
       gPost.fxaaShader && gPost.fxaaShader->IsValid() && gPost.fxaaEnabled;
-  bool postReady =
-      gPost.extractShader && gPost.extractShader->IsValid() &&
-      gPost.blurShader && gPost.blurShader->IsValid() &&
-      gPost.tonemapShader && gPost.tonemapShader->IsValid() &&
-      gPost.quadVao != 0;
+  bool bloomReady = gPost.extractShader && gPost.extractShader->IsValid() &&
+                    gPost.blurShader && gPost.blurShader->IsValid() &&
+                    gPost.bloomEnabled;
+  bool postReady = gPost.tonemapShader && gPost.tonemapShader->IsValid() &&
+                   gPost.quadVao != 0;
 
   if (postReady) {
     CreatePostProcessTargets(gPost, width, height);
@@ -1031,18 +1040,33 @@ void DrawScene(int width, int height) {
   scene.cameraPos[1] = cameraPos.y;
   scene.cameraPos[2] = cameraPos.z;
   scene.cameraPos[3] = 1.0f;
-  scene.fogColor[0] = 0.08f;
-  scene.fogColor[1] = 0.1f;
-  scene.fogColor[2] = 0.16f;
-  scene.fogColor[3] = 1.0f;
-  scene.fogParams[0] = 0.045f;
-  scene.fogParams[1] = 0.25f;
-  scene.fogParams[2] = -1.0f;
-  scene.fogParams[3] = 0.8f;
-  scene.fogParams2[0] = 3.0f;
-  scene.fogParams2[1] = 0.35f;
-  scene.fogParams2[2] = 0.0f;
-  scene.fogParams2[3] = 0.0f;
+  if (gConfig.fogEnabled) {
+    scene.fogColor[0] = 0.08f;
+    scene.fogColor[1] = 0.1f;
+    scene.fogColor[2] = 0.16f;
+    scene.fogColor[3] = 1.0f;
+    scene.fogParams[0] = 0.045f;
+    scene.fogParams[1] = 0.25f;
+    scene.fogParams[2] = -1.0f;
+    scene.fogParams[3] = 0.8f;
+    scene.fogParams2[0] = 3.0f;
+    scene.fogParams2[1] = 0.35f;
+    scene.fogParams2[2] = 0.0f;
+    scene.fogParams2[3] = 0.0f;
+  } else {
+    scene.fogColor[0] = 0.0f;
+    scene.fogColor[1] = 0.0f;
+    scene.fogColor[2] = 0.0f;
+    scene.fogColor[3] = 1.0f;
+    scene.fogParams[0] = 0.0f;
+    scene.fogParams[1] = 0.0f;
+    scene.fogParams[2] = 0.0f;
+    scene.fogParams[3] = 0.0f;
+    scene.fogParams2[0] = 0.0f;
+    scene.fogParams2[1] = 0.0f;
+    scene.fogParams2[2] = 0.0f;
+    scene.fogParams2[3] = 0.0f;
+  }
 
   glBindBuffer(GL_UNIFORM_BUFFER, gSceneUbo);
   glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(SceneUniforms), &scene);
@@ -1071,7 +1095,7 @@ void DrawScene(int width, int height) {
     DrawDisk((float)sysMon->GetDiskUsage());
   }
 
-  if (gParticles && sysMon) {
+  if (gParticles && sysMon && gConfig.particlesEnabled) {
     gParticles->Update(dtSeconds, *sysMon);
     gParticles->Draw();
   }
@@ -1079,37 +1103,40 @@ void DrawScene(int width, int height) {
   if (postReady) {
     glDisable(GL_DEPTH_TEST);
 
-    // Bloom extraction pass.
-    glBindFramebuffer(GL_FRAMEBUFFER, gPost.pingpongFbo[0]);
-    gPost.extractShader->Use();
-    gPost.extractShader->SetFloat("uThreshold", 0.7f);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, gPost.hdrColor);
-    DrawFullScreenQuad(gPost);
-
-    // Blur ping-pong passes.
-    bool horizontal = true;
-    bool firstIteration = true;
-    const int blurPasses = 6;
-    gPost.blurShader->Use();
-    gPost.blurShader->SetVec2("uTexelSize", 1.0f / width,
-                              1.0f / height);
-    for (int i = 0; i < blurPasses; ++i) {
-      glBindFramebuffer(GL_FRAMEBUFFER,
-                        gPost.pingpongFbo[horizontal ? 1 : 0]);
-      gPost.blurShader->SetInt("uHorizontal", horizontal ? 1 : 0);
+    GLuint bloomTexture = 0;
+    if (bloomReady) {
+      // Bloom extraction pass.
+      glBindFramebuffer(GL_FRAMEBUFFER, gPost.pingpongFbo[0]);
+      gPost.extractShader->Use();
+      gPost.extractShader->SetFloat("uThreshold", 0.7f);
       glActiveTexture(GL_TEXTURE0);
-      glBindTexture(GL_TEXTURE_2D,
-                    firstIteration ? gPost.pingpongColor[0]
-                                   : gPost.pingpongColor[horizontal ? 0 : 1]);
+      glBindTexture(GL_TEXTURE_2D, gPost.hdrColor);
       DrawFullScreenQuad(gPost);
-      horizontal = !horizontal;
-      if (firstIteration) {
-        firstIteration = false;
-      }
-    }
 
-    GLuint bloomTexture = gPost.pingpongColor[horizontal ? 0 : 1];
+      // Blur ping-pong passes.
+      bool horizontal = true;
+      bool firstIteration = true;
+      const int blurPasses = 6;
+      gPost.blurShader->Use();
+      gPost.blurShader->SetVec2("uTexelSize", 1.0f / width,
+                                1.0f / height);
+      for (int i = 0; i < blurPasses; ++i) {
+        glBindFramebuffer(GL_FRAMEBUFFER,
+                          gPost.pingpongFbo[horizontal ? 1 : 0]);
+        gPost.blurShader->SetInt("uHorizontal", horizontal ? 1 : 0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D,
+                      firstIteration ? gPost.pingpongColor[0]
+                                     : gPost.pingpongColor[horizontal ? 0 : 1]);
+        DrawFullScreenQuad(gPost);
+        horizontal = !horizontal;
+        if (firstIteration) {
+          firstIteration = false;
+        }
+      }
+
+      bloomTexture = gPost.pingpongColor[horizontal ? 0 : 1];
+    }
 
     if (fxaaReady) {
       glBindFramebuffer(GL_FRAMEBUFFER, gPost.ldrFbo);
@@ -1119,7 +1146,8 @@ void DrawScene(int width, int height) {
 
     gPost.tonemapShader->Use();
     gPost.tonemapShader->SetFloat("uExposure", 1.0f);
-    gPost.tonemapShader->SetFloat("uBloomStrength", 0.8f);
+    gPost.tonemapShader->SetFloat("uBloomStrength",
+                                  bloomReady ? 0.8f : 0.0f);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, gPost.hdrColor);
     glActiveTexture(GL_TEXTURE1);
@@ -1205,4 +1233,10 @@ void CleanupOpenGL(HWND hwnd) {
   wglMakeCurrent(NULL, NULL);
   wglDeleteContext(hRC);
   ReleaseDC(hwnd, hDC);
+}
+
+void SetConfig(const Config &config) {
+  gConfig = config;
+  gPost.fxaaEnabled = (config.quality != QualityTier::Low);
+  gPost.bloomEnabled = config.bloomEnabled;
 }
