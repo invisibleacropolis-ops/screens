@@ -43,3 +43,20 @@
 **Completion %**: 100% (HDR Pipeline)
 **Remaining TODO**:
 - Expose bloom/FXAA toggles via user configuration if needed.
+
+## Session: 2026-01-06
+**Agent**: ChatGPT
+**Task**: Instanced Particle System Driven by SystemMonitor
+**Changes**:
+- Added `src/Particles.h`/`src/Particles.cpp` with a documented particle module that uses CPU simulation plus instanced rendering. The module smooths SystemMonitor inputs with rise/fall rates to avoid jitter and documents where GPU compute/transform feedback can slot in when OpenGL 4.3+ is available.
+- Integrated the particle system into `src/renderer.cpp`:
+    - Initialized the particle system and per-frame timing.
+    - Updated and rendered particles each frame using smoothed CPU/RAM/Disk/Network metrics.
+    - Cleaned up particle resources on shutdown.
+- Added new particle shaders (`assets/shaders/particles.vert` and `assets/shaders/particles.frag`) with SceneData UBO bindings and soft point sprite falloff.
+- Updated `CMakeLists.txt` to compile the new particle sources.
+
+**Completion %**: 100% (Particle System)
+**Remaining TODO**:
+- Consider GPU compute/transform feedback simulation for larger particle counts when targeting OpenGL 4.3+.
+- Tune visual parameters (spawn rates, colors, sizes) based on desired aesthetic.

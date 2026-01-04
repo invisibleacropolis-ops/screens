@@ -1,4 +1,5 @@
 #include "renderer.h"
+#include "Particles.h"
 #include "Shader.h"
 #include "Texture.h"
 #include <array>
@@ -70,6 +71,7 @@ static PFNWGLCHOOSEPIXELFORMATARBPROC wglChoosePixelFormatARB = nullptr;
 HGLRC hRC = NULL;
 HDC hDC = NULL;
 SystemMonitor *sysMon = nullptr;
+Particles *gParticles = nullptr;
 
 struct Vec3 {
   float x;
@@ -119,6 +121,9 @@ Mesh gRingMesh;
 static constexpr float kPi = 3.14159265358979323846f;
 Mat4 gSceneTransform{};
 PostProcessPipeline gPost{};
+static LARGE_INTEGER gFrameTimerFreq{};
+static LARGE_INTEGER gLastFrameTime{};
+static bool gHasFrameTime = false;
 
 struct SceneUniforms {
   float view[16];
@@ -828,9 +833,15 @@ void InitOpenGL(HWND hwnd) {
   sysMon = new SystemMonitor();
   sysMon->Initialize();
 
+  QueryPerformanceFrequency(&gFrameTimerFreq);
+  gHasFrameTime = false;
+
   gCubeMesh = CreateCubeMesh();
   gSphereMesh = CreateSphereMesh(32, 16);
   gRingMesh = CreateRingMesh(64, 2.0f, 2.2f);
+
+  gParticles = new Particles(3000);
+  gParticles->Initialize();
 
   CreateFullScreenQuad(gPost);
   gPost.extractShader =
@@ -955,6 +966,18 @@ void DrawDisk(float usage) {
 }
 
 void DrawScene(int width, int height) {
+  LARGE_INTEGER now{};
+  QueryPerformanceCounter(&now);
+  float dtSeconds = 0.016f;
+  if (gHasFrameTime && gFrameTimerFreq.QuadPart > 0) {
+    dtSeconds = static_cast<float>(
+        (now.QuadPart - gLastFrameTime.QuadPart) /
+        static_cast<double>(gFrameTimerFreq.QuadPart));
+  } else {
+    gHasFrameTime = true;
+  }
+  gLastFrameTime = now;
+
   if (sysMon)
     sysMon->Update();
 
@@ -1048,6 +1071,11 @@ void DrawScene(int width, int height) {
     DrawDisk((float)sysMon->GetDiskUsage());
   }
 
+  if (gParticles && sysMon) {
+    gParticles->Update(dtSeconds, *sysMon);
+    gParticles->Draw();
+  }
+
   if (postReady) {
     glDisable(GL_DEPTH_TEST);
 
@@ -1117,6 +1145,12 @@ void DrawScene(int width, int height) {
 void CleanupOpenGL(HWND hwnd) {
   if (sysMon)
     delete sysMon;
+
+  if (gParticles) {
+    gParticles->Cleanup();
+    delete gParticles;
+    gParticles = nullptr;
+  }
 
   if (gShader) {
     delete gShader;
