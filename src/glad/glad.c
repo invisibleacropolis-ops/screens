@@ -54,6 +54,7 @@ PFNGLDELETEFRAMEBUFFERSPROC glDeleteFramebuffers = NULL;
 PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer = NULL;
 PFNGLFRAMEBUFFERTEXTURE2DPROC glFramebufferTexture2D = NULL;
 PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbuffer = NULL;
+PFNGLCHECKFRAMEBUFFERSTATUSPROC glCheckFramebufferStatus = NULL;
 
 /* Renderbuffer functions */
 PFNGLGENRENDERBUFFERSPROC glGenRenderbuffers = NULL;
@@ -155,6 +156,8 @@ int gladLoadGLLoader(GLADloadproc load) {
       (PFNGLFRAMEBUFFERTEXTURE2DPROC)load("glFramebufferTexture2D");
   glFramebufferRenderbuffer =
       (PFNGLFRAMEBUFFERRENDERBUFFERPROC)load("glFramebufferRenderbuffer");
+  glCheckFramebufferStatus =
+      (PFNGLCHECKFRAMEBUFFERSTATUSPROC)load("glCheckFramebufferStatus");
 
   /* Renderbuffer functions */
   glGenRenderbuffers = (PFNGLGENRENDERBUFFERSPROC)load("glGenRenderbuffers");

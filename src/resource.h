@@ -114,3 +114,97 @@
 #define IDC_STATIC_NET_STRENGTH 2306
 #define IDC_LABEL_NET_MESH 2307
 #define IDC_COMBO_NET_MESH 2308
+
+// =====================================================================
+// LAYER LAYOUT CONTROLS
+// =====================================================================
+
+// Layer Selection
+#define IDC_COMBO_LAYER_SELECT 3000
+#define IDC_COMBO_LAYOUT_PRESET 3001
+
+// Layer Position
+#define IDC_LABEL_LAYER_X 3010
+#define IDC_SLIDER_LAYER_X 3011
+#define IDC_STATIC_LAYER_X 3012
+#define IDC_LABEL_LAYER_Y 3013
+#define IDC_SLIDER_LAYER_Y 3014
+#define IDC_STATIC_LAYER_Y 3015
+
+// Layer Size
+#define IDC_LABEL_LAYER_W 3020
+#define IDC_SLIDER_LAYER_W 3021
+#define IDC_STATIC_LAYER_W 3022
+#define IDC_LABEL_LAYER_H 3023
+#define IDC_SLIDER_LAYER_H 3024
+#define IDC_STATIC_LAYER_H 3025
+
+// Layer Depth/Rotation
+#define IDC_LABEL_LAYER_DEPTH 3030
+#define IDC_SLIDER_LAYER_DEPTH 3031
+#define IDC_STATIC_LAYER_DEPTH 3032
+#define IDC_LABEL_LAYER_ROTATION 3033
+#define IDC_SLIDER_LAYER_ROTATION 3034
+#define IDC_STATIC_LAYER_ROTATION 3035
+
+// Layer Options
+#define IDC_CHECK_LAYER_VISIBLE 3040
+#define IDC_CHECK_LAYER_LOCK_ASPECT 3041
+
+// =====================================================================
+// LAYER FX CONTROLS
+// =====================================================================
+
+// FX Layer Selection
+#define IDC_COMBO_FX_LAYER_SELECT 4000
+#define IDC_COMBO_BLEND_MODE 4001
+
+// Bloom FX
+#define IDC_CHECK_FX_BLOOM 4010
+#define IDC_SLIDER_FX_BLOOM_THRESH 4011
+#define IDC_STATIC_FX_BLOOM_THRESH 4012
+#define IDC_SLIDER_FX_BLOOM_INT 4013
+#define IDC_STATIC_FX_BLOOM_INT 4014
+#define IDC_SLIDER_FX_BLOOM_RAD 4015
+#define IDC_STATIC_FX_BLOOM_RAD 4016
+
+// Glow FX
+#define IDC_CHECK_FX_GLOW 4020
+#define IDC_SLIDER_FX_GLOW_INT 4021
+#define IDC_STATIC_FX_GLOW_INT 4022
+#define IDC_SLIDER_FX_GLOW_SIZE 4023
+#define IDC_STATIC_FX_GLOW_SIZE 4024
+#define IDC_BTN_FX_GLOW_COLOR 4025
+
+// Chromatic Aberration FX
+#define IDC_CHECK_FX_CHROM 4030
+#define IDC_SLIDER_FX_CHROM_OFFSET 4031
+#define IDC_STATIC_FX_CHROM_OFFSET 4032
+
+// Distortion FX
+#define IDC_CHECK_FX_DISTORT 4040
+#define IDC_SLIDER_FX_DISTORT_AMT 4041
+#define IDC_STATIC_FX_DISTORT_AMT 4042
+#define IDC_SLIDER_FX_DISTORT_FREQ 4043
+#define IDC_STATIC_FX_DISTORT_FREQ 4044
+
+// Trails FX
+#define IDC_CHECK_FX_TRAILS 4050
+#define IDC_SLIDER_FX_TRAIL_FADE 4051
+#define IDC_STATIC_FX_TRAIL_FADE 4052
+
+// Other FX Toggles
+#define IDC_CHECK_FX_SCANLINES 4060
+#define IDC_CHECK_FX_NOISE 4061
+#define IDC_CHECK_FX_PIXELATE 4062
+#define IDC_CHECK_FX_MOTIONBLUR 4063
+#define IDC_CHECK_FX_VIGNETTE 4064
+#define IDC_CHECK_FX_EDGEGLOW 4065
+
+// Layer Opacity
+#define IDC_SLIDER_FX_OPACITY 4070
+#define IDC_STATIC_FX_OPACITY 4071
+
+// Render Order
+#define IDC_SLIDER_FX_RENDER_ORDER 4080
+#define IDC_STATIC_FX_RENDER_ORDER 4081

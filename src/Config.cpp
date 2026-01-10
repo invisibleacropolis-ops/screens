@@ -112,7 +112,41 @@ MeshType StringToMeshType(const std::string &str) {
   return MeshType::Sphere;
 }
 
+// BlendMode conversion
+const char *BlendModeToString(BlendMode mode) {
+  switch (mode) {
+  case BlendMode::Additive:
+    return "additive";
+  case BlendMode::Multiply:
+    return "multiply";
+  case BlendMode::Screen:
+    return "screen";
+  case BlendMode::Normal:
+    return "normal";
+  }
+  return "normal";
+}
+
+BlendMode StringToBlendMode(const std::string &str) {
+  std::string lower = str;
+  std::transform(
+      lower.begin(), lower.end(), lower.begin(),
+      [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (lower == "additive")
+    return BlendMode::Additive;
+  if (lower == "multiply")
+    return BlendMode::Multiply;
+  if (lower == "screen")
+    return BlendMode::Screen;
+  if (lower == "normal")
+    return BlendMode::Normal;
+  return BlendMode::Normal; // Default
+}
+
+// ... existing helpers ...
+
 std::wstring GetConfigPath() {
+
   wchar_t modulePath[MAX_PATH] = {};
   GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
   std::filesystem::path path(modulePath);
@@ -239,6 +273,81 @@ Config LoadConfig() {
           ParseFloat(value, config.networkMetric.strength);
     } else if (key == "network_mesh") {
       config.networkMetric.meshType = StringToMeshType(value);
+    }
+
+    // Layer Configurations
+    else if (key.length() > 6 && key.substr(0, 5) == "layer") {
+      // Expected format: layerN_property
+      if (std::isdigit(key[5]) && key[6] == '_') {
+        int index = key[5] - '0';
+        if (index >= 0 && index < 4) {
+          std::string prop = key.substr(7);
+          auto &layer = config.layerConfigs[index];
+
+          if (prop == "x")
+            layer.transform.x = ParseFloat(value, 0.0f);
+          else if (prop == "y")
+            layer.transform.y = ParseFloat(value, 0.0f);
+          else if (prop == "w")
+            layer.transform.width = ParseFloat(value, 1.0f);
+          else if (prop == "h")
+            layer.transform.height = ParseFloat(value, 1.0f);
+          else if (prop == "visible")
+            layer.transform.visible = ParseBool(value, true);
+          else if (prop == "lock_aspect")
+            layer.transform.lockAspect = ParseBool(value, false);
+          else if (prop == "depth")
+            layer.transform.depth = ParseFloat(value, 0.0f);
+          else if (prop == "rotation")
+            layer.transform.rotation = ParseFloat(value, 0.0f);
+
+          else if (prop == "blend")
+            layer.blendMode = StringToBlendMode(value);
+
+          else if (prop == "bloom")
+            layer.bloomEnabled = ParseBool(value, true);
+          else if (prop == "bloom_int")
+            layer.bloomIntensity = ParseFloat(value, 0.8f);
+          else if (prop == "bloom_thresh")
+            layer.bloomThreshold = ParseFloat(value, 0.7f);
+          else if (prop == "bloom_rad")
+            layer.bloomRadius = ParseFloat(value, 10.0f);
+
+          else if (prop == "glow")
+            layer.glowEnabled = ParseBool(value, true);
+          else if (prop == "glow_int")
+            layer.glowIntensity = ParseFloat(value, 0.5f);
+          else if (prop == "glow_rad")
+            layer.glowSize = ParseFloat(value, 5.0f);
+
+          else if (prop == "chrom")
+            layer.chromaticEnabled = ParseBool(value, false);
+          else if (prop == "chrom_off")
+            layer.chromaticOffset = ParseFloat(value, 2.0f);
+
+          else if (prop == "distort")
+            layer.distortionEnabled = ParseBool(value, false);
+          else if (prop == "distort_amt")
+            layer.distortionAmount = ParseFloat(value, 0.1f);
+
+          else if (prop == "trails")
+            layer.trailsEnabled = ParseBool(value, false);
+          else if (prop == "trail_fade")
+            layer.trailsFade = ParseFloat(value, 0.9f);
+
+          else if (prop == "scanlines")
+            layer.scanLinesEnabled = ParseBool(value, false);
+          else if (prop == "noise")
+            layer.noiseEnabled = ParseBool(value, false);
+          else if (prop == "motion_blur")
+            layer.motionBlurEnabled = ParseBool(value, false);
+          else if (prop == "pixelate")
+            layer.pixelateEnabled = ParseBool(value, false);
+
+          else if (prop == "opacity")
+            layer.opacity = ParseFloat(value, 1.0f);
+        }
+      }
     }
   }
 

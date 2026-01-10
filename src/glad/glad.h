@@ -72,6 +72,7 @@ typedef ptrdiff_t GLintptr;
 #define GL_TEXTURE_WRAP_S 0x2802
 #define GL_TEXTURE_WRAP_T 0x2803
 #define GL_LINEAR 0x2601
+#define GL_NEAREST 0x2600
 
 /* Basic texture formats */
 #define GL_RGB 0x1907
@@ -127,7 +128,16 @@ typedef ptrdiff_t GLintptr;
 #define GL_COLOR_ATTACHMENT0 0x8CE0
 #define GL_DEPTH_ATTACHMENT 0x8D00
 #define GL_DEPTH_COMPONENT24 0x81A6
+#define GL_DEPTH_COMPONENT 0x1902
 #define GL_FRAMEBUFFER_SRGB 0x8DB9
+#define GL_FRAMEBUFFER_COMPLETE 0x8CD5
+
+/* Additional blend factors */
+#define GL_ZERO 0
+#define GL_SRC_COLOR 0x0300
+#define GL_DST_COLOR 0x0306
+#define GL_ONE_MINUS_SRC_COLOR 0x0301
+#define GL_ONE_MINUS_DST_COLOR 0x0307
 
 /* Texture units */
 #define GL_TEXTURE0 0x84C0
@@ -268,6 +278,7 @@ typedef void(APIENTRY *PFNGLFRAMEBUFFERTEXTURE2DPROC)(GLenum target,
 typedef void(APIENTRY *PFNGLFRAMEBUFFERRENDERBUFFERPROC)(
     GLenum target, GLenum attachment, GLenum renderbuffertarget,
     GLuint renderbuffer);
+typedef GLenum(APIENTRY *PFNGLCHECKFRAMEBUFFERSTATUSPROC)(GLenum target);
 
 /* Renderbuffer functions */
 typedef void(APIENTRY *PFNGLGENRENDERBUFFERSPROC)(GLsizei n,
@@ -372,6 +383,7 @@ extern PFNGLDELETEFRAMEBUFFERSPROC glDeleteFramebuffers;
 extern PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer;
 extern PFNGLFRAMEBUFFERTEXTURE2DPROC glFramebufferTexture2D;
 extern PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbuffer;
+extern PFNGLCHECKFRAMEBUFFERSTATUSPROC glCheckFramebufferStatus;
 
 /* Renderbuffer functions */
 extern PFNGLGENRENDERBUFFERSPROC glGenRenderbuffers;

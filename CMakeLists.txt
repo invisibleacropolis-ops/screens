@@ -10,21 +10,45 @@ set(SOURCES
     src/Config.h
     src/renderer.cpp
     src/renderer.h
-    src/Shader.cpp
-    src/Shader.h
     src/Particles.cpp
     src/Particles.h
     src/glad/glad.c
     src/glad/glad.h
     src/SystemMonitor.cpp
     src/SystemMonitor.h
-    src/Texture.cpp
-    src/Texture.h
     src/DiagTest.h
     src/stb_image.h
     src/resource.h
     src/SettingsDialog.h
     src/SettingsDialog.cpp
+    # Engine modules
+    src/engine/Math.h
+    src/engine/Math.cpp
+    src/engine/Engine.h
+    src/engine/Engine.cpp
+    # Graphics modules
+    src/graphics/Mesh.h
+    src/graphics/Mesh.cpp
+    src/graphics/Shader.h
+    src/graphics/Shader.cpp
+    src/graphics/Texture.h
+    src/graphics/Texture.cpp
+    src/graphics/PostProcessConfig.h
+    src/graphics/VisualizerLayer.h
+    src/graphics/LayerCompositor.h
+    # Visualizers
+    src/visualizers/IVisualizer.h
+    src/visualizers/CPUVisualizer.h
+    src/visualizers/RAMVisualizer.h
+    src/visualizers/DiskVisualizer.h
+    # Settings modules
+    src/settings/ISettingsPanel.h
+    src/settings/SettingsHost.h
+    src/settings/VisualEffectsPanel.h
+    src/settings/CameraPanel.h
+    src/settings/MetricsPanel.h
+    src/settings/LayerLayoutPanel.h
+    src/settings/LayerFXPanel.h
 )
 
 add_executable(ScreenSaver WIN32 ${SOURCES})

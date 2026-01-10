@@ -1,6 +1,9 @@
 #pragma once
 
+#include "graphics/PostProcessConfig.h"
+#include <array>
 #include <string>
+
 
 enum class QualityTier {
   Low = 0,
@@ -63,6 +66,10 @@ struct Config {
   MetricConfig diskMetric = {true, 0.0f, 1.0f, MeshType::Ring};
   MetricConfig networkMetric = {true, 0.0f, 1.0f,
                                 MeshType::None}; // None = particles only
+
+  // Layer Configurations (Layout + FX)
+  // Index 0=CPU, 1=RAM, 2=Disk, 3=Network
+  std::array<PostProcessConfig, 4> layerConfigs;
 };
 
 Config LoadConfig();

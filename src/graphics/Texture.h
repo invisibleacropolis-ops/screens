@@ -3,7 +3,7 @@
 #include <array>
 #include <string>
 
-#include "glad/glad.h"
+#include "../glad/glad.h"
 
 class Texture {
 public:

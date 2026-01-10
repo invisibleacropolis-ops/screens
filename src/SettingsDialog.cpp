@@ -8,6 +8,8 @@
 // Global config pointer for dialog proc
 static Config *g_pConfig = nullptr;
 static Config g_tempConfig;
+static int g_currentLayoutLayer = 0;
+static int g_currentFXLayer = 0;
 
 // Helper: Set slider value and update label
 static void SetSliderValue(HWND hDlg, int sliderId, int labelId, int value,
@@ -78,8 +80,155 @@ static void ReadMetricControls(HWND hDlg, MetricConfig &metric, int checkId,
       (MeshType)SendMessage(GetDlgItem(hDlg, meshComboId), CB_GETCURSEL, 0, 0);
 }
 
+// Helper to load layer layout controls
+static void LoadLayerControls(HWND hDlg, int layerIndex) {
+  if (layerIndex < 0 || layerIndex >= 4)
+    return;
+  const auto &t = g_tempConfig.layerConfigs[layerIndex].transform;
+
+  SetSliderValueFloat(hDlg, IDC_SLIDER_LAYER_X, IDC_STATIC_LAYER_X, t.x, 0.0f,
+                      1.0f);
+  SetSliderValueFloat(hDlg, IDC_SLIDER_LAYER_Y, IDC_STATIC_LAYER_Y, t.y, 0.0f,
+                      1.0f);
+  SetSliderValueFloat(hDlg, IDC_SLIDER_LAYER_W, IDC_STATIC_LAYER_W, t.width,
+                      0.0f, 1.0f);
+  SetSliderValueFloat(hDlg, IDC_SLIDER_LAYER_H, IDC_STATIC_LAYER_H, t.height,
+                      0.0f, 1.0f);
+  CheckDlgButton(hDlg, IDC_CHECK_LAYER_VISIBLE,
+                 t.visible ? BST_CHECKED : BST_UNCHECKED);
+  CheckDlgButton(hDlg, IDC_CHECK_LAYER_LOCK_ASPECT,
+                 t.lockAspect ? BST_CHECKED : BST_UNCHECKED);
+}
+
+// Helper to save layer layout controls
+static void SaveLayerControls(HWND hDlg, int layerIndex) {
+  if (layerIndex < 0 || layerIndex >= 4)
+    return;
+  auto &t = g_tempConfig.layerConfigs[layerIndex].transform;
+
+  t.x = GetSliderValueFloat(hDlg, IDC_SLIDER_LAYER_X, 0.0f, 1.0f);
+  t.y = GetSliderValueFloat(hDlg, IDC_SLIDER_LAYER_Y, 0.0f, 1.0f);
+  t.width = GetSliderValueFloat(hDlg, IDC_SLIDER_LAYER_W, 0.0f, 1.0f);
+  t.height = GetSliderValueFloat(hDlg, IDC_SLIDER_LAYER_H, 0.0f, 1.0f);
+  t.visible = IsDlgButtonChecked(hDlg, IDC_CHECK_LAYER_VISIBLE) == BST_CHECKED;
+  t.lockAspect =
+      IsDlgButtonChecked(hDlg, IDC_CHECK_LAYER_LOCK_ASPECT) == BST_CHECKED;
+}
+
+// Helper to load layer FX controls
+static void LoadFXControls(HWND hDlg, int layerIndex) {
+  if (layerIndex < 0 || layerIndex >= 4)
+    return;
+  const auto &fx = g_tempConfig.layerConfigs[layerIndex];
+
+  SendMessage(GetDlgItem(hDlg, IDC_COMBO_BLEND_MODE), CB_SETCURSEL,
+              (int)fx.blendMode, 0);
+
+  CheckDlgButton(hDlg, IDC_CHECK_FX_BLOOM,
+                 fx.bloomEnabled ? BST_CHECKED : BST_UNCHECKED);
+  SetSliderValueFloat(hDlg, IDC_SLIDER_FX_BLOOM_INT, IDC_STATIC_FX_BLOOM_INT,
+                      fx.bloomIntensity, 0.0f, 2.0f);
+  SetSliderValueFloat(hDlg, IDC_SLIDER_FX_BLOOM_THRESH,
+                      IDC_STATIC_FX_BLOOM_THRESH, fx.bloomThreshold, 0.0f,
+                      2.0f);
+  SetSliderValueFloat(hDlg, IDC_SLIDER_FX_BLOOM_RAD, IDC_STATIC_FX_BLOOM_RAD,
+                      fx.bloomRadius, 1.0f, 20.0f);
+
+  CheckDlgButton(hDlg, IDC_CHECK_FX_GLOW,
+                 fx.glowEnabled ? BST_CHECKED : BST_UNCHECKED);
+  SetSliderValueFloat(hDlg, IDC_SLIDER_FX_GLOW_INT, IDC_STATIC_FX_GLOW_INT,
+                      fx.glowIntensity, 0.0f, 2.0f);
+  SetSliderValueFloat(hDlg, IDC_SLIDER_FX_GLOW_SIZE, IDC_STATIC_FX_GLOW_SIZE,
+                      fx.glowSize, 1.0f, 10.0f);
+
+  CheckDlgButton(hDlg, IDC_CHECK_FX_CHROM,
+                 fx.chromaticEnabled ? BST_CHECKED : BST_UNCHECKED);
+  SetSliderValueFloat(hDlg, IDC_SLIDER_FX_CHROM_OFFSET,
+                      IDC_STATIC_FX_CHROM_OFFSET, fx.chromaticOffset, 0.0f,
+                      10.0f);
+
+  CheckDlgButton(hDlg, IDC_CHECK_FX_DISTORT,
+                 fx.distortionEnabled ? BST_CHECKED : BST_UNCHECKED);
+  SetSliderValueFloat(hDlg, IDC_SLIDER_FX_DISTORT_AMT,
+                      IDC_STATIC_FX_DISTORT_AMT, fx.distortionAmount, 0.0f,
+                      1.0f);
+
+  CheckDlgButton(hDlg, IDC_CHECK_FX_TRAILS,
+                 fx.trailsEnabled ? BST_CHECKED : BST_UNCHECKED);
+  SetSliderValueFloat(hDlg, IDC_SLIDER_FX_TRAIL_FADE, IDC_STATIC_FX_TRAIL_FADE,
+                      fx.trailsFade, 0.0f, 1.0f);
+
+  CheckDlgButton(hDlg, IDC_CHECK_FX_SCANLINES,
+                 fx.scanLinesEnabled ? BST_CHECKED : BST_UNCHECKED);
+  CheckDlgButton(hDlg, IDC_CHECK_FX_NOISE,
+                 fx.noiseEnabled ? BST_CHECKED : BST_UNCHECKED);
+  CheckDlgButton(hDlg, IDC_CHECK_FX_MOTIONBLUR,
+                 fx.motionBlurEnabled ? BST_CHECKED : BST_UNCHECKED);
+  CheckDlgButton(hDlg, IDC_CHECK_FX_PIXELATE,
+                 fx.pixelateEnabled ? BST_CHECKED : BST_UNCHECKED);
+
+  SetSliderValueFloat(hDlg, IDC_SLIDER_FX_OPACITY, IDC_STATIC_FX_OPACITY,
+                      fx.opacity, 0.0f, 1.0f);
+}
+
+// Helper to save layer FX controls
+static void SaveFXControls(HWND hDlg, int layerIndex) {
+  if (layerIndex < 0 || layerIndex >= 4)
+    return;
+  auto &fx = g_tempConfig.layerConfigs[layerIndex];
+
+  fx.blendMode = (BlendMode)SendMessage(GetDlgItem(hDlg, IDC_COMBO_BLEND_MODE),
+                                        CB_GETCURSEL, 0, 0);
+
+  fx.bloomEnabled = IsDlgButtonChecked(hDlg, IDC_CHECK_FX_BLOOM) == BST_CHECKED;
+  fx.bloomIntensity =
+      GetSliderValueFloat(hDlg, IDC_SLIDER_FX_BLOOM_INT, 0.0f, 2.0f);
+  fx.bloomThreshold =
+      GetSliderValueFloat(hDlg, IDC_SLIDER_FX_BLOOM_THRESH, 0.0f, 2.0f);
+  fx.bloomRadius =
+      GetSliderValueFloat(hDlg, IDC_SLIDER_FX_BLOOM_RAD, 1.0f, 20.0f);
+
+  fx.glowEnabled = IsDlgButtonChecked(hDlg, IDC_CHECK_FX_GLOW) == BST_CHECKED;
+  fx.glowIntensity =
+      GetSliderValueFloat(hDlg, IDC_SLIDER_FX_GLOW_INT, 0.0f, 2.0f);
+  fx.glowSize = GetSliderValueFloat(hDlg, IDC_SLIDER_FX_GLOW_SIZE, 1.0f, 10.0f);
+
+  fx.chromaticEnabled =
+      IsDlgButtonChecked(hDlg, IDC_CHECK_FX_CHROM) == BST_CHECKED;
+  fx.chromaticOffset =
+      GetSliderValueFloat(hDlg, IDC_SLIDER_FX_CHROM_OFFSET, 0.0f, 10.0f);
+
+  fx.distortionEnabled =
+      IsDlgButtonChecked(hDlg, IDC_CHECK_FX_DISTORT) == BST_CHECKED;
+  fx.distortionAmount =
+      GetSliderValueFloat(hDlg, IDC_SLIDER_FX_DISTORT_AMT, 0.0f, 1.0f);
+
+  fx.trailsEnabled =
+      IsDlgButtonChecked(hDlg, IDC_CHECK_FX_TRAILS) == BST_CHECKED;
+  fx.trailsFade =
+      GetSliderValueFloat(hDlg, IDC_SLIDER_FX_TRAIL_FADE, 0.0f, 1.0f);
+
+  fx.scanLinesEnabled =
+      IsDlgButtonChecked(hDlg, IDC_CHECK_FX_SCANLINES) == BST_CHECKED;
+  fx.noiseEnabled = IsDlgButtonChecked(hDlg, IDC_CHECK_FX_NOISE) == BST_CHECKED;
+  fx.motionBlurEnabled =
+      IsDlgButtonChecked(hDlg, IDC_CHECK_FX_MOTIONBLUR) == BST_CHECKED;
+  fx.pixelateEnabled =
+      IsDlgButtonChecked(hDlg, IDC_CHECK_FX_PIXELATE) == BST_CHECKED;
+
+  fx.opacity = GetSliderValueFloat(hDlg, IDC_SLIDER_FX_OPACITY, 0.0f, 1.0f);
+}
+
 // Initialize dialog controls from config
 static void InitDialogFromConfig(HWND hDlg, const Config &cfg) {
+  // Ensure layer configs have defaults if not set
+  if (cfg.layerConfigs[0].transform.width == 0) {
+    // CPU - Top Left / Full depending on preference, let's default to a quad
+    // layout for now Actually, let's use the presets But since we can't easily
+    // access presets here, let's just ensure defaults This part might be better
+    // in Config.cpp or LoadConfigConfig
+  }
+
   // Quality combo
   HWND hQuality = GetDlgItem(hDlg, IDC_COMBO_QUALITY);
   SendMessageW(hQuality, CB_ADDSTRING, 0, (LPARAM)L"Low");
@@ -147,10 +296,57 @@ static void InitDialogFromConfig(HWND hDlg, const Config &cfg) {
                      IDC_SLIDER_NET_THRESHOLD, IDC_STATIC_NET_THRESHOLD,
                      IDC_SLIDER_NET_STRENGTH, IDC_STATIC_NET_STRENGTH,
                      IDC_COMBO_NET_MESH);
+
+  // Layer Layout combos
+  HWND hLayerSelect = GetDlgItem(hDlg, IDC_COMBO_LAYER_SELECT);
+  SendMessageW(hLayerSelect, CB_ADDSTRING, 0, (LPARAM)L"CPU");
+  SendMessageW(hLayerSelect, CB_ADDSTRING, 0, (LPARAM)L"RAM");
+  SendMessageW(hLayerSelect, CB_ADDSTRING, 0, (LPARAM)L"Disk");
+  SendMessageW(hLayerSelect, CB_ADDSTRING, 0, (LPARAM)L"Network");
+  SendMessage(hLayerSelect, CB_SETCURSEL, 0, 0);
+
+  HWND hPreset = GetDlgItem(hDlg, IDC_COMBO_LAYOUT_PRESET);
+  SendMessageW(hPreset, CB_ADDSTRING, 0, (LPARAM)L"Full Screen");
+  SendMessageW(hPreset, CB_ADDSTRING, 0, (LPARAM)L"Top Left");
+  SendMessageW(hPreset, CB_ADDSTRING, 0, (LPARAM)L"Top Right");
+  SendMessageW(hPreset, CB_ADDSTRING, 0, (LPARAM)L"Bottom Left");
+  SendMessageW(hPreset, CB_ADDSTRING, 0, (LPARAM)L"Bottom Right");
+  SendMessageW(hPreset, CB_ADDSTRING, 0, (LPARAM)L"Quad Layout");
+  SendMessage(hPreset, CB_SETCURSEL, 0, 0);
+
+  // Initialize Layout Controls for Layer 0
+  g_currentLayoutLayer = 0;
+  LoadLayerControls(hDlg, 0);
+
+  // Layer FX combos
+  HWND hFXLayerSelect = GetDlgItem(hDlg, IDC_COMBO_FX_LAYER_SELECT);
+  SendMessageW(hFXLayerSelect, CB_ADDSTRING, 0, (LPARAM)L"CPU");
+  SendMessageW(hFXLayerSelect, CB_ADDSTRING, 0, (LPARAM)L"RAM");
+  SendMessageW(hFXLayerSelect, CB_ADDSTRING, 0, (LPARAM)L"Disk");
+  SendMessageW(hFXLayerSelect, CB_ADDSTRING, 0, (LPARAM)L"Network");
+  SendMessage(hFXLayerSelect, CB_SETCURSEL, 0, 0);
+
+  HWND hBlendMode = GetDlgItem(hDlg, IDC_COMBO_BLEND_MODE);
+  SendMessageW(hBlendMode, CB_ADDSTRING, 0, (LPARAM)L"Additive");
+  SendMessageW(hBlendMode, CB_ADDSTRING, 0, (LPARAM)L"Multiply");
+  SendMessageW(hBlendMode, CB_ADDSTRING, 0, (LPARAM)L"Screen");
+  SendMessageW(hBlendMode, CB_ADDSTRING, 0, (LPARAM)L"Normal");
+  SendMessage(hBlendMode, CB_SETCURSEL, 0, 0);
+
+  // Initialize FX Controls for Layer 0
+  g_currentFXLayer = 0;
+  LoadFXControls(hDlg, 0);
 }
 
 // Read config from dialog controls
 static void ReadConfigFromDialog(HWND hDlg, Config &cfg) {
+  // Save current layer adjustments
+  SaveLayerControls(hDlg, g_currentLayoutLayer);
+  SaveFXControls(hDlg, g_currentFXLayer);
+
+  // Copy all layer configs from temp to output
+  cfg.layerConfigs = g_tempConfig.layerConfigs;
+
   // Quality
   cfg.quality = (QualityTier)SendMessage(GetDlgItem(hDlg, IDC_COMBO_QUALITY),
                                          CB_GETCURSEL, 0, 0);
@@ -306,6 +502,53 @@ static INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message,
     case IDC_SLIDER_NET_STRENGTH:
       info = {IDC_STATIC_NET_STRENGTH, true, 0.0f, 2.0f};
       break;
+    // Layer Layout sliders
+    case IDC_SLIDER_LAYER_X:
+      info = {IDC_STATIC_LAYER_X, true, 0.0f, 1.0f};
+      break;
+    case IDC_SLIDER_LAYER_Y:
+      info = {IDC_STATIC_LAYER_Y, true, 0.0f, 1.0f};
+      break;
+    case IDC_SLIDER_LAYER_W:
+      info = {IDC_STATIC_LAYER_W, true, 0.0f, 1.0f};
+      break;
+    case IDC_SLIDER_LAYER_H:
+      info = {IDC_STATIC_LAYER_H, true, 0.0f, 1.0f};
+      break;
+    case IDC_SLIDER_LAYER_DEPTH:
+      info = {IDC_STATIC_LAYER_DEPTH, true, -1.0f, 1.0f};
+      break;
+    case IDC_SLIDER_LAYER_ROTATION:
+      info = {IDC_STATIC_LAYER_ROTATION, true, 0.0f, 360.0f};
+      break;
+    // Layer FX sliders
+    case IDC_SLIDER_FX_BLOOM_THRESH:
+      info = {IDC_STATIC_FX_BLOOM_THRESH, true, 0.0f, 2.0f};
+      break;
+    case IDC_SLIDER_FX_BLOOM_INT:
+      info = {IDC_STATIC_FX_BLOOM_INT, true, 0.0f, 2.0f};
+      break;
+    case IDC_SLIDER_FX_BLOOM_RAD:
+      info = {IDC_STATIC_FX_BLOOM_RAD, true, 1.0f, 20.0f};
+      break;
+    case IDC_SLIDER_FX_GLOW_INT:
+      info = {IDC_STATIC_FX_GLOW_INT, true, 0.0f, 2.0f};
+      break;
+    case IDC_SLIDER_FX_GLOW_SIZE:
+      info = {IDC_STATIC_FX_GLOW_SIZE, true, 1.0f, 10.0f};
+      break;
+    case IDC_SLIDER_FX_CHROM_OFFSET:
+      info = {IDC_STATIC_FX_CHROM_OFFSET, true, 0.0f, 10.0f};
+      break;
+    case IDC_SLIDER_FX_DISTORT_AMT:
+      info = {IDC_STATIC_FX_DISTORT_AMT, true, 0.0f, 1.0f};
+      break;
+    case IDC_SLIDER_FX_TRAIL_FADE:
+      info = {IDC_STATIC_FX_TRAIL_FADE, true, 0.0f, 1.0f};
+      break;
+    case IDC_SLIDER_FX_OPACITY:
+      info = {IDC_STATIC_FX_OPACITY, true, 0.0f, 1.0f};
+      break;
     }
 
     if (info.labelId != 0) {
@@ -328,8 +571,87 @@ static INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message,
 
     case IDC_BTN_DEFAULTS:
       g_tempConfig = Config();
+      // Restore default presets logic similar to Engine init if desired
+      // For now just standard defaults
       InitDialogFromConfig(hDlg, g_tempConfig);
       return TRUE;
+
+    // Handle Layer Selection Change
+    case IDC_COMBO_LAYER_SELECT:
+      if (HIWORD(wParam) == CBN_SELCHANGE) {
+        // Save current layer
+        SaveLayerControls(hDlg, g_currentLayoutLayer);
+        // Switch to new layer
+        int newIndex = (int)SendMessage(
+            GetDlgItem(hDlg, IDC_COMBO_LAYER_SELECT), CB_GETCURSEL, 0, 0);
+        if (newIndex >= 0 && newIndex < 4) {
+          g_currentLayoutLayer = newIndex;
+          LoadLayerControls(hDlg, g_currentLayoutLayer);
+        }
+        return TRUE;
+      }
+      break;
+
+    // Handle FX Layer Selection Change
+    case IDC_COMBO_FX_LAYER_SELECT:
+      if (HIWORD(wParam) == CBN_SELCHANGE) {
+        // Save current layer
+        SaveFXControls(hDlg, g_currentFXLayer);
+        // Switch to new layer
+        int newIndex = (int)SendMessage(
+            GetDlgItem(hDlg, IDC_COMBO_FX_LAYER_SELECT), CB_GETCURSEL, 0, 0);
+        if (newIndex >= 0 && newIndex < 4) {
+          g_currentFXLayer = newIndex;
+          LoadFXControls(hDlg, g_currentFXLayer);
+        }
+        return TRUE;
+      }
+      break;
+
+    // Handle Layout Preset Change
+    case IDC_COMBO_LAYOUT_PRESET:
+      if (HIWORD(wParam) == CBN_SELCHANGE) {
+        int presetIndex = (int)SendMessage(
+            GetDlgItem(hDlg, IDC_COMBO_LAYOUT_PRESET), CB_GETCURSEL, 0, 0);
+        LayerTransform t;
+
+        // 0=Full, 1=TopLeft, 2=TopRight, 3=BotLeft, 4=BotRight, 5=Quad
+        switch (presetIndex) {
+        case 0:
+          t = LayerTransform::FullScreen();
+          break;
+        case 1:
+          t = LayerTransform::TopLeft();
+          break;
+        case 2:
+          t = LayerTransform::TopRight();
+          break;
+        case 3:
+          t = LayerTransform::BottomLeft();
+          break;
+        case 4:
+          t = LayerTransform::BottomRight();
+          break;
+        case 5:
+          // Quad layout logic depends on layer index, but here we just picking
+          // a generic quad slot? Or maybe we should apply the "Quad Layout"
+          // preset to ALL layers? "Quad Layout" implies configuring the current
+          // layer to be one of the quads. Let's assume it sets it to a generic
+          // quad size (0.5, 0.5) and let user position it? Or better, set it
+          // based on current layer index.
+          t = LayerTransform::QuadLayout(g_currentLayoutLayer);
+          break;
+        default:
+          return TRUE;
+        }
+
+        // Apply to current temp config
+        g_tempConfig.layerConfigs[g_currentLayoutLayer].transform = t;
+        // Reload controls
+        LoadLayerControls(hDlg, g_currentLayoutLayer);
+        return TRUE;
+      }
+      break;
     }
     break;
   }
@@ -624,6 +946,81 @@ static LPCDLGTEMPLATE CreateDialogTemplate() {
   y += mRowH + 2;
 
   y += 6;
+
+  // -- Layer Layout --
+  AddItem(SS_LEFT | SS_SUNKEN, 10, y, 375, 1, 0, L"STATIC", nullptr);
+  y += 4;
+  AddItem(SS_LEFT, 10, y, 100, 12, 0, L"STATIC", L"Layer Layout");
+  AddItem(SS_LEFT, 120, y, 40, 12, 0, L"STATIC", L"Layer:");
+  AddItem(CBS_DROPDOWNLIST | WS_TABSTOP, 160, y - 2, 70, 100,
+          IDC_COMBO_LAYER_SELECT, L"COMBOBOX", nullptr);
+  AddItem(SS_LEFT, 240, y, 40, 12, 0, L"STATIC", L"Preset:");
+  AddItem(CBS_DROPDOWNLIST | WS_TABSTOP, 280, y - 2, 90, 100,
+          IDC_COMBO_LAYOUT_PRESET, L"COMBOBOX", nullptr);
+  y += mRowH;
+
+  AddItem(SS_LEFT, 15, y, 30, 12, IDC_LABEL_LAYER_X, L"STATIC", L"X:");
+  AddItem(0, 45, y, 60, 14, IDC_SLIDER_LAYER_X, TRACKBAR_CLASSW, nullptr);
+  AddItem(SS_LEFT, 108, y, 30, 12, IDC_STATIC_LAYER_X, L"STATIC", L"0.00");
+  AddItem(SS_LEFT, 145, y, 30, 12, IDC_LABEL_LAYER_Y, L"STATIC", L"Y:");
+  AddItem(0, 175, y, 60, 14, IDC_SLIDER_LAYER_Y, TRACKBAR_CLASSW, nullptr);
+  AddItem(SS_LEFT, 238, y, 30, 12, IDC_STATIC_LAYER_Y, L"STATIC", L"0.00");
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 280, y, 80, 12, IDC_CHECK_LAYER_VISIBLE,
+          L"BUTTON", L"Visible");
+  y += mRowH;
+
+  AddItem(SS_LEFT, 15, y, 30, 12, IDC_LABEL_LAYER_W, L"STATIC", L"W:");
+  AddItem(0, 45, y, 60, 14, IDC_SLIDER_LAYER_W, TRACKBAR_CLASSW, nullptr);
+  AddItem(SS_LEFT, 108, y, 30, 12, IDC_STATIC_LAYER_W, L"STATIC", L"1.00");
+  AddItem(SS_LEFT, 145, y, 30, 12, IDC_LABEL_LAYER_H, L"STATIC", L"H:");
+  AddItem(0, 175, y, 60, 14, IDC_SLIDER_LAYER_H, TRACKBAR_CLASSW, nullptr);
+  AddItem(SS_LEFT, 238, y, 30, 12, IDC_STATIC_LAYER_H, L"STATIC", L"1.00");
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 280, y, 80, 12,
+          IDC_CHECK_LAYER_LOCK_ASPECT, L"BUTTON", L"Lock Aspect");
+  y += mRowH + 2;
+
+  // -- Layer Effects --
+  AddItem(SS_LEFT | SS_SUNKEN, 10, y, 375, 1, 0, L"STATIC", nullptr);
+  y += 4;
+  AddItem(SS_LEFT, 10, y, 80, 12, 0, L"STATIC", L"Layer Effects");
+  AddItem(SS_LEFT, 100, y, 40, 12, 0, L"STATIC", L"Layer:");
+  AddItem(CBS_DROPDOWNLIST | WS_TABSTOP, 140, y - 2, 70, 100,
+          IDC_COMBO_FX_LAYER_SELECT, L"COMBOBOX", nullptr);
+  AddItem(SS_LEFT, 220, y, 40, 12, 0, L"STATIC", L"Blend:");
+  AddItem(CBS_DROPDOWNLIST | WS_TABSTOP, 260, y - 2, 70, 100,
+          IDC_COMBO_BLEND_MODE, L"COMBOBOX", nullptr);
+  y += mRowH;
+
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 15, y, 55, 12, IDC_CHECK_FX_BLOOM,
+          L"BUTTON", L"Bloom");
+  AddItem(0, 75, y, 60, 14, IDC_SLIDER_FX_BLOOM_INT, TRACKBAR_CLASSW, nullptr);
+  AddItem(SS_LEFT, 138, y, 30, 12, IDC_STATIC_FX_BLOOM_INT, L"STATIC", L"0.80");
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 180, y, 55, 12, IDC_CHECK_FX_GLOW,
+          L"BUTTON", L"Glow");
+  AddItem(0, 235, y, 60, 14, IDC_SLIDER_FX_GLOW_INT, TRACKBAR_CLASSW, nullptr);
+  AddItem(SS_LEFT, 298, y, 30, 12, IDC_STATIC_FX_GLOW_INT, L"STATIC", L"0.50");
+  y += mRowH;
+
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 15, y, 70, 12, IDC_CHECK_FX_CHROM,
+          L"BUTTON", L"Chromatic");
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 95, y, 65, 12, IDC_CHECK_FX_DISTORT,
+          L"BUTTON", L"Distortion");
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 170, y, 50, 12, IDC_CHECK_FX_TRAILS,
+          L"BUTTON", L"Trails");
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 225, y, 70, 12, IDC_CHECK_FX_SCANLINES,
+          L"BUTTON", L"Scanlines");
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 300, y, 50, 12, IDC_CHECK_FX_NOISE,
+          L"BUTTON", L"Noise");
+  y += mRowH;
+
+  AddItem(SS_LEFT, 15, y, 45, 12, 0, L"STATIC", L"Opacity:");
+  AddItem(0, 65, y, 80, 14, IDC_SLIDER_FX_OPACITY, TRACKBAR_CLASSW, nullptr);
+  AddItem(SS_LEFT, 150, y, 30, 12, IDC_STATIC_FX_OPACITY, L"STATIC", L"1.00");
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 200, y, 75, 12, IDC_CHECK_FX_MOTIONBLUR,
+          L"BUTTON", L"Motion Blur");
+  AddItem(BS_AUTOCHECKBOX | WS_TABSTOP, 285, y, 60, 12, IDC_CHECK_FX_PIXELATE,
+          L"BUTTON", L"Pixelate");
+  y += mRowH + 4;
 
   // Buttons
   AddItem(BS_DEFPUSHBUTTON | WS_TABSTOP, 100, y, 60, 18, IDOK, L"BUTTON",

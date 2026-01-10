@@ -217,7 +217,7 @@ void ParseCommandLine(LPWSTR cmdLine, char &mode, HWND &parentHwnd) {
         std::wstring hwndStr = afterP.substr(firstNum);
         // Convert string to (unsigned) long, then cast to HWND
         // Screensaver pass hwnd as decimal unsigned integer usually.
-        parentHwnd = (HWND)wcstoul(hwndStr.c_str(), NULL, 10);
+        parentHwnd = (HWND)(uintptr_t)wcstoul(hwndStr.c_str(), NULL, 10);
       }
     }
   }

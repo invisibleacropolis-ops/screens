@@ -2,8 +2,8 @@
 #include "Config.h"
 #include "DiagTest.h"
 #include "Particles.h"
-#include "Shader.h"
-#include "Texture.h"
+#include "graphics/Shader.h"
+#include "graphics/Texture.h"
 #include <array>
 #include <cmath>
 #include <cstring>
