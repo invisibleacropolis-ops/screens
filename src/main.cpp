@@ -3,15 +3,12 @@
 #endif
 #define WIN32_LEAN_AND_MEAN
 #include "Config.h"
+#include "Logger.h"
 #include "SettingsDialog.h"
-#include "renderer.h"
+#include "engine/Engine.h"
 #include <sstream>
 #include <stdlib.h>
 #include <string.h>
-#include <string>
-#include <tchar.h>
-#include <vector>
-#include <windows.h>
 
 // Globals
 HINSTANCE hInst;
@@ -24,6 +21,7 @@ void ParseCommandLine(LPWSTR cmdLine, char &mode, HWND &parentHwnd);
 
 int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                       LPWSTR lpCmdLine, int nCmdShow) {
+  Logger::LogS("Application Starting...");
   hInst = hInstance;
 
   char mode = 's'; // Default to screensaver mode
@@ -91,8 +89,14 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     return 2;
 
   Config config = LoadConfig();
-  SetConfig(config);
-  InitOpenGL(hWnd);
+  Engine engine;
+  engine.SetConfig(config);
+  Logger::LogS("Initializing Engine...");
+  if (!engine.Initialize(hWnd)) {
+    Logger::LogS("Engine Initialization Failed!");
+    return 2;
+  }
+  Logger::LogS("Engine Initialized Successfully.");
 
   // Main loop
   MSG msg;
@@ -108,13 +112,13 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
       // Render
       RECT rect;
       GetClientRect(hWnd, &rect);
-      DrawScene(rect.right, rect.bottom);
+      engine.Render(rect.right, rect.bottom);
       // Limit framerate slightly to avoid burning GPU in preview?
       // For now, let it run (SwapBuffers implicitly vsyncs usually)
     }
   }
 
-  CleanupOpenGL(hWnd);
+  engine.Cleanup();
 
   return (int)msg.wParam;
 }

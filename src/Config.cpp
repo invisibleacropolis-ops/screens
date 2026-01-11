@@ -424,7 +424,63 @@ bool SaveConfig(const Config &config) {
   file << "network_threshold=" << config.networkMetric.threshold << "\n";
   file << "network_strength=" << config.networkMetric.strength << "\n";
   file << "network_mesh=" << MeshTypeToString(config.networkMetric.meshType)
-       << "\n";
+       << "\n\n";
+
+  // Layer Configurations
+  file << "# Layer Configurations (0=CPU, 1=RAM, 2=Disk, 3=Network)\n";
+  for (int i = 0; i < 4; ++i) {
+    const auto &layer = config.layerConfigs[i];
+    file << "layer" << i << "_x=" << layer.transform.x << "\n";
+    file << "layer" << i << "_y=" << layer.transform.y << "\n";
+    file << "layer" << i << "_w=" << layer.transform.width << "\n";
+    file << "layer" << i << "_h=" << layer.transform.height << "\n";
+    file << "layer" << i
+         << "_visible=" << (layer.transform.visible ? "true" : "false") << "\n";
+    file << "layer" << i
+         << "_lock_aspect=" << (layer.transform.lockAspect ? "true" : "false")
+         << "\n";
+    file << "layer" << i << "_depth=" << layer.transform.depth << "\n";
+    file << "layer" << i << "_rotation=" << layer.transform.rotation << "\n";
+
+    file << "layer" << i << "_blend=" << BlendModeToString(layer.blendMode)
+         << "\n";
+
+    file << "layer" << i << "_bloom=" << (layer.bloomEnabled ? "true" : "false")
+         << "\n";
+    file << "layer" << i << "_bloom_int=" << layer.bloomIntensity << "\n";
+    file << "layer" << i << "_bloom_thresh=" << layer.bloomThreshold << "\n";
+    file << "layer" << i << "_bloom_rad=" << layer.bloomRadius << "\n";
+
+    file << "layer" << i << "_glow=" << (layer.glowEnabled ? "true" : "false")
+         << "\n";
+    file << "layer" << i << "_glow_int=" << layer.glowIntensity << "\n";
+    file << "layer" << i << "_glow_rad=" << layer.glowSize << "\n";
+
+    file << "layer" << i
+         << "_chrom=" << (layer.chromaticEnabled ? "true" : "false") << "\n";
+    file << "layer" << i << "_chrom_off=" << layer.chromaticOffset << "\n";
+
+    file << "layer" << i
+         << "_distort=" << (layer.distortionEnabled ? "true" : "false") << "\n";
+    file << "layer" << i << "_distort_amt=" << layer.distortionAmount << "\n";
+
+    file << "layer" << i
+         << "_trails=" << (layer.trailsEnabled ? "true" : "false") << "\n";
+    file << "layer" << i << "_trail_fade=" << layer.trailsFade << "\n";
+
+    file << "layer" << i
+         << "_scanlines=" << (layer.scanLinesEnabled ? "true" : "false")
+         << "\n";
+    file << "layer" << i << "_noise=" << (layer.noiseEnabled ? "true" : "false")
+         << "\n";
+    file << "layer" << i
+         << "_motion_blur=" << (layer.motionBlurEnabled ? "true" : "false")
+         << "\n";
+    file << "layer" << i
+         << "_pixelate=" << (layer.pixelateEnabled ? "true" : "false") << "\n";
+
+    file << "layer" << i << "_opacity=" << layer.opacity << "\n\n";
+  }
 
   return true;
 }

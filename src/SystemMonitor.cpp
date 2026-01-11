@@ -1,7 +1,9 @@
 #include "SystemMonitor.h"
-#include <iostream>
-#include <vector>
+#include "Logger.h"
 #include <cwchar>
+#include <iostream>
+#include <string>
+#include <vector>
 
 #pragma comment(lib, "pdh.lib")
 
@@ -23,20 +25,37 @@ SystemMonitor::~SystemMonitor() {
 }
 
 void SystemMonitor::Initialize() {
+  Logger::LogS("SystemMonitor::Initialize() called");
+
   // Initialize CPU Query
-  PdhOpenQueryW(NULL, 0, &cpuQuery);
-  // English counter names are generally preferred for portability if possible,
-  // but standard Windows installs "Processor" should work.
-  // Creating a wildcard query or specific total query.
-  PdhAddEnglishCounterW(cpuQuery, L"\\Processor(_Total)\\% Processor Time", 0,
-                        &cpuTotal);
-  PdhCollectQueryData(cpuQuery);
+  PDH_STATUS status = PdhOpenQueryW(NULL, 0, &cpuQuery);
+  if (status != ERROR_SUCCESS) {
+    Logger::LogS("PdhOpenQueryW(CPU) failed: " + std::to_string(status));
+    cpuQuery = NULL;
+  } else {
+    Logger::LogS("PdhOpenQueryW(CPU) success");
+
+    // Try standard counter
+    status = PdhAddEnglishCounterW(
+        cpuQuery, L"\\Processor(_Total)\\% Processor Time", 0, &cpuTotal);
+    if (status != ERROR_SUCCESS) {
+      Logger::LogS("PdhAddEnglishCounterW(CPU) failed: " +
+                   std::to_string(status));
+      // Try localized fallback?
+      // For now just log.
+    } else {
+      Logger::LogS("PdhAddEnglishCounterW(CPU) success");
+      PdhCollectQueryData(cpuQuery);
+    }
+  }
 
   // Initialize Disk Query
-  PdhOpenQueryW(NULL, 0, &diskQuery);
-  PdhAddEnglishCounterW(diskQuery, L"\\PhysicalDisk(_Total)\\% Disk Time", 0,
-                        &diskTotal);
-  PdhCollectQueryData(diskQuery);
+  status = PdhOpenQueryW(NULL, 0, &diskQuery);
+  if (status == ERROR_SUCCESS) {
+    PdhAddEnglishCounterW(diskQuery, L"\\PhysicalDisk(_Total)\\% Disk Time", 0,
+                          &diskTotal);
+    PdhCollectQueryData(diskQuery);
+  }
 
   // Initialize Network Query
   PdhOpenQueryW(NULL, 0, &netQuery);
@@ -45,9 +64,9 @@ void SystemMonitor::Initialize() {
       NULL, L"\\Network Interface(*)\\Bytes Total/sec", NULL, &bufferSize, 0);
   if (netStatus == PDH_MORE_DATA && bufferSize > 0) {
     std::vector<wchar_t> buffer(bufferSize);
-    netStatus = PdhExpandWildCardPathW(
-        NULL, L"\\Network Interface(*)\\Bytes Total/sec", buffer.data(),
-        &bufferSize, 0);
+    netStatus =
+        PdhExpandWildCardPathW(NULL, L"\\Network Interface(*)\\Bytes Total/sec",
+                               buffer.data(), &bufferSize, 0);
     if (netStatus == ERROR_SUCCESS) {
       const wchar_t *cursor = buffer.data();
       while (*cursor != L'\0') {
@@ -113,10 +132,8 @@ void SystemMonitor::Update() {
     networkBytesPerSec = rawNetworkBytesPerSec;
     smoothingInitialized = true;
   } else {
-    cpuUsage =
-        smoothingAlpha * rawCpuUsage + (1.0 - smoothingAlpha) * cpuUsage;
-    ramUsage =
-        smoothingAlpha * rawRamUsage + (1.0 - smoothingAlpha) * ramUsage;
+    cpuUsage = smoothingAlpha * rawCpuUsage + (1.0 - smoothingAlpha) * cpuUsage;
+    ramUsage = smoothingAlpha * rawRamUsage + (1.0 - smoothingAlpha) * ramUsage;
     diskUsage =
         smoothingAlpha * rawDiskUsage + (1.0 - smoothingAlpha) * diskUsage;
     networkBytesPerSec = smoothingAlpha * rawNetworkBytesPerSec +

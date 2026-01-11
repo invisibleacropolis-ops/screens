@@ -1,5 +1,10 @@
 #include "Engine.h"
+#include "../Logger.h"
 #include "../Particles.h"
+#include "../glad/glad.h"
+#include "DebugUtils.h"
+#include "Engine.h"
+
 #include "../visualizers/CPUVisualizer.h"
 #include "../visualizers/DiskVisualizer.h"
 #include "../visualizers/RAMVisualizer.h"
@@ -10,25 +15,33 @@ Engine::Engine() { QueryPerformanceFrequency(&m_timerFreq); }
 Engine::~Engine() { Cleanup(); }
 
 bool Engine::Initialize(HWND hwnd) {
+  Logger::LogS("Engine::Initialize Start");
   m_hwnd = hwnd;
 
   if (!InitializeOpenGLContext(hwnd)) {
+    Logger::LogS("Failed to initialize OpenGL Context");
     return false;
   }
+  Logger::LogS("OpenGL Context Initialized");
 
+  Logger::LogS("Setting up Shaders...");
   SetupShaders();
+  Logger::LogS("Setting up Meshes...");
   SetupMeshes();
 
   // Create system monitor
   m_systemMonitor = std::make_unique<SystemMonitor>();
+  m_systemMonitor->Initialize();
 
   // Initialize layers with default size (will resize on first frame)
+  Logger::LogS("Setting up Layers...");
   SetupLayers(1920, 1080);
 
-  // Create visualizers and assign to layers
-  m_layers[static_cast<int>(LayerIndex::CPU)].SetVisualizer(
-      std::make_unique<CPUVisualizer>(m_config, m_sphereMesh, m_cubeMesh,
-                                      m_ringMesh));
+  // Create visualizers  // Setup Layers
+  // CPU Layer
+  m_layers[0].Initialize(1920, 1080, "CPU");
+  m_layers[0].SetVisualizer(std::make_unique<CPUVisualizer>(m_config));
+  m_layers[0].SetFXConfig(m_config.layerConfigs[0]);
   m_layers[static_cast<int>(LayerIndex::RAM)].SetVisualizer(
       std::make_unique<RAMVisualizer>(m_config, m_sphereMesh, m_cubeMesh,
                                       m_ringMesh));
@@ -164,8 +177,13 @@ void Engine::Render(int width, int height) {
   // Composite all layers
   CompositeLayers(width, height);
 
+  // Present final result to screen
+  m_compositor.Present();
+
   // Swap buffers
-  SwapBuffers(m_hdc);
+  if (!SwapBuffers(m_hdc)) {
+    Logger::LogS("SwapBuffers Failed!");
+  }
 }
 
 void Engine::UpdateMetrics(float dt) {
@@ -212,7 +230,50 @@ void Engine::RenderToLayers(int width, int height) {
 
     // Draw visualizer
     if (m_mainShader) {
+      m_mainShader->Use();
+
+      // Camera setup
+
+      CheckGLError("Before Camera Setup");
+
+      float aspect = static_cast<float>(lw) / static_cast<float>(lh);
+      Mat4 projection =
+          Mat4Perspective(45.0f * (kPi / 180.0f), aspect, 0.1f, 100.0f);
+
+      // Rotate camera around center
+      float radius = 5.0f;
+      float camX = std::sin(m_cameraAngle * (kPi / 180.0f)) * radius;
+      float camZ = std::cos(m_cameraAngle * (kPi / 180.0f)) * radius;
+
+      Vec3 eye{camX, 2.0f, camZ};
+      Vec3 target{0.0f, 0.0f, 0.0f};
+      Vec3 up{0.0f, 1.0f, 0.0f};
+
+      Mat4 view = Mat4LookAt(eye, target, up);
+
+      // Log matrices once
+      static bool loggedMatrices = false;
+      if (!loggedMatrices) {
+        LogMatrix("Projection", projection.m.data());
+        LogMatrix("View", view.m.data());
+
+        GLint locView = glGetUniformLocation(m_mainShader->GetId(), "uView");
+        GLint locProj =
+            glGetUniformLocation(m_mainShader->GetId(), "uProjection");
+        std::stringstream ss;
+        ss << "Uniform locs - uView: " << locView
+           << ", uProjection: " << locProj;
+        Logger::LogS(ss.str());
+
+        loggedMatrices = true;
+      }
+
+      m_mainShader->SetMat4("uProjection", projection.m.data());
+      m_mainShader->SetMat4("uView", view.m.data());
+      CheckGLError("After Setting Matrices");
+
       viz->Draw(m_mainShader.get(), m_sceneTransform);
+      CheckGLError("After Draw");
     }
 
     layer.Unbind();
@@ -230,15 +291,74 @@ void Engine::CompositeLayers(int width, int height) {
   // Blit compositor output to screen (placeholder)
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   glViewport(0, 0, width, height);
+
+  // MAGENTA DEBUG CLEAR
+  glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  CheckGLError("After Clear");
 }
 
 bool Engine::InitializeOpenGLContext(HWND hwnd) {
   m_hdc = GetDC(hwnd);
-  return m_hdc != nullptr;
+  if (!m_hdc)
+    return false;
+
+  PIXELFORMATDESCRIPTOR pfd = {sizeof(PIXELFORMATDESCRIPTOR),
+                               1,
+                               PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL |
+                                   PFD_DOUBLEBUFFER,
+                               PFD_TYPE_RGBA,
+                               32,
+                               0,
+                               0,
+                               0,
+                               0,
+                               0,
+                               0,
+                               0,
+                               0,
+                               0,
+                               0,
+                               0,
+                               0,
+                               0,
+                               24,
+                               8,
+                               0,
+                               PFD_MAIN_PLANE,
+                               0,
+                               0,
+                               0,
+                               0};
+
+  int format = ChoosePixelFormat(m_hdc, &pfd);
+  if (!SetPixelFormat(m_hdc, format, &pfd))
+    return false;
+
+  m_hrc = wglCreateContext(m_hdc);
+  if (!m_hrc)
+    return false;
+
+  if (!wglMakeCurrent(m_hdc, m_hrc))
+    return false;
+
+  if (!gladLoadGL()) {
+    Logger::LogS("Failed to load GLAD!");
+    return false;
+  }
+
+  return true;
 }
 
 void Engine::SetupShaders() {
-  // Placeholder - shader setup
+  Logger::LogS("Loading Main Shader...");
+  m_mainShader = std::make_unique<Shader>("assets/shaders/basic.vert",
+                                          "assets/shaders/basic.frag");
+  if (!m_mainShader->IsValid()) {
+    Logger::LogS("Failed to load Main Shader!");
+  } else {
+    Logger::LogS("Main Shader Loaded Successfully.");
+  }
 }
 
 void Engine::SetupMeshes() {

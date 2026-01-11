@@ -328,6 +328,7 @@ WINGDIAPI void APIENTRY glBlendFunc(GLenum sfactor, GLenum dfactor);
 WINGDIAPI void APIENTRY glDepthMask(GLboolean flag);
 WINGDIAPI void APIENTRY glDepthFunc(GLenum func);
 WINGDIAPI void APIENTRY glGetIntegerv(GLenum pname, GLint *data);
+WINGDIAPI GLenum APIENTRY glGetError(void);
 
 /* ------------------------------------------------------------------------- */
 /* OpenGL extension function declarations                                    */

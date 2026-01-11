@@ -8,8 +8,9 @@ set(SOURCES
     src/main.cpp
     src/Config.cpp
     src/Config.h
-    src/renderer.cpp
-    src/renderer.h
+    src/Logger.h
+
+
     src/Particles.cpp
     src/Particles.h
     src/glad/glad.c
@@ -66,3 +67,11 @@ target_link_libraries(ScreenSaver PRIVATE
 
 # Rename executable to .scr for screensaver functionality
 set_target_properties(ScreenSaver PROPERTIES SUFFIX ".scr")
+
+# Copy assets to the output directory
+add_custom_command(TARGET ScreenSaver POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/assets
+    $<TARGET_FILE_DIR:ScreenSaver>/assets
+    COMMENT "Copying assets to output directory..."
+)

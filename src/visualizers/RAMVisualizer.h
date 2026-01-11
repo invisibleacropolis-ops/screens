@@ -14,45 +14,35 @@ public:
   void Init() override {}
 
   void Update(float dt, const SystemMonitor &monitor) override {
-    m_currentUsage = static_cast<float>(monitor.GetRamUsage());
+    float targetUsage = static_cast<float>(monitor.GetRamUsage());
+    m_currentUsage += (targetUsage - m_currentUsage) * dt * 2.0f; // Soft Lerp
+    m_pulse += dt * (1.0f + GetEffectiveUsage() * 0.5f);
   }
 
   void Draw(Shader *shader, const Mat4 &sceneTransform) override {
-    if (!IsEnabled())
-      return;
-    if (m_config.ramMetric.meshType == MeshType::None)
-      return;
-    if (!shader || !shader->IsValid())
+    if (!IsEnabled() || !shader)
       return;
 
     float u = GetEffectiveUsage();
-    int litCubes = static_cast<int>(u * 100);
+    // Pulse scale: Base + Usage + SineWave
+    float scale = 1.0f + (u * 1.5f) + (std::sin(m_pulse) * 0.1f);
 
-    float spacing = 0.25f;
-    float startX = -(10 * spacing) / 2.0f;
-    float startZ = -(10 * spacing) / 2.0f;
+    Mat4 transform = Mat4Translate(0.0f, 0.0f, 0.0f);
+    transform = Mat4Multiply(sceneTransform, transform);
 
-    for (int z = 0; z < 10; z++) {
-      for (int x = 0; x < 10; x++) {
-        int idx = z * 10 + x;
-        float tx = startX + x * spacing;
-        float tz = startZ + z * spacing;
-        Mat4 translate = Mat4Translate(tx, -2.5f, tz);
-        float size = (idx < litCubes) ? 0.2f : 0.1f;
-        Mat4 scale = Mat4Scale(size, size, size);
-        Mat4 model =
-            Mat4Multiply(sceneTransform, Mat4Multiply(translate, scale));
+    Mat4 model = Mat4Multiply(transform, Mat4Scale(scale, scale, scale));
 
-        shader->Use();
-        shader->SetMat4("uModel", model.m.data());
-        if (idx < litCubes) {
-          shader->SetVec3("uColor", u > 0.8f ? 1.0f : 0.0f, 1.0f - u, 0.0f);
-        } else {
-          shader->SetVec3("uColor", 0.1f, 0.1f, 0.1f);
-        }
-        DrawMesh(GetMesh());
-      }
-    }
+    // Rotate slowly
+    model = Mat4Multiply(model, Mat4RotateY(m_pulse * 0.5f));
+    model = Mat4Multiply(model, Mat4RotateX(m_pulse * 0.3f));
+
+    shader->Use();
+    shader->SetMat4("uModel", model.m.data());
+
+    // Color: Blue/Cyan based on usage
+    shader->SetVec3("uColor", 0.1f, 0.5f + (u * 0.5f), 1.0f);
+
+    DrawMesh(GetMesh());
   }
 
   void Cleanup() override {}
@@ -61,11 +51,15 @@ public:
 
 private:
   float GetEffectiveUsage() const {
+    // Normalize 0-100 to 0-1 based on Threshold/Strength
     float effective = m_currentUsage - m_config.ramMetric.threshold;
-    if (effective < 0.0f)
-      effective = 0.0f;
-    float u = (effective / (100.0f - m_config.ramMetric.threshold)) *
-              m_config.ramMetric.strength;
+    if (effective < 0)
+      effective = 0;
+    float range = 100.0f - m_config.ramMetric.threshold;
+    if (range <= 0.001f)
+      range = 100.0f;
+
+    float u = (effective / range) * m_config.ramMetric.strength;
     return (u > 1.0f) ? 1.0f : u;
   }
 
@@ -85,4 +79,5 @@ private:
   Mesh &m_cubeMesh;
   Mesh &m_ringMesh;
   float m_currentUsage = 0.0f;
+  float m_pulse = 0.0f;
 };
