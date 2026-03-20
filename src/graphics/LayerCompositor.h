@@ -116,7 +116,6 @@ public:
     }
 
     glDisable(GL_BLEND);
-    glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
   }

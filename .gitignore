@@ -1,7 +1,12 @@
-# CMake build
+# Generated output SSOT
+.out/
+
+# Forbidden root artifacts (kept ignored to prevent regression)
 build/
-out/
 cmake-build-*/
+vcpkg/
+build_log.txt
+build_error_log.txt
 .vs/
 *.user
 
@@ -15,3 +20,4 @@ cmake-build-*/
 
 # Artifacts
 .gemini/
+.worktrees/

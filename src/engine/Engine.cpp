@@ -7,8 +7,10 @@
 
 #include "../visualizers/CPUVisualizer.h"
 #include "../visualizers/DiskVisualizer.h"
+#include "../visualizers/FractalSurfaceVisualizer.h"
 #include "../visualizers/RAMVisualizer.h"
 #include <cmath>
+
 
 Engine::Engine() { QueryPerformanceFrequency(&m_timerFreq); }
 
@@ -42,13 +44,20 @@ bool Engine::Initialize(HWND hwnd) {
   m_layers[0].Initialize(1920, 1080, "CPU");
   m_layers[0].SetVisualizer(std::make_unique<CPUVisualizer>(m_config));
   m_layers[0].SetFXConfig(m_config.layerConfigs[0]);
+
+  // RAM Layer
   m_layers[static_cast<int>(LayerIndex::RAM)].SetVisualizer(
       std::make_unique<RAMVisualizer>(m_config, m_sphereMesh, m_cubeMesh,
                                       m_ringMesh));
+
+  // Disk Layer
   m_layers[static_cast<int>(LayerIndex::Disk)].SetVisualizer(
       std::make_unique<DiskVisualizer>(m_config, m_sphereMesh, m_cubeMesh,
                                        m_ringMesh));
-  // Network visualizer placeholder - can be added later
+
+  // Network layer currently has no dedicated visualizer implementation.
+  m_layers[static_cast<int>(LayerIndex::Network)].SetVisualizer(
+      std::make_unique<FractalSurfaceVisualizer>(m_config));
 
   // Apply FX configs from current configuration
   // This will apply defaults/presets if configs are empty, or loaded values if
@@ -84,7 +93,9 @@ void Engine::Cleanup() {
   DestroyMesh(m_ringMesh);
 
   // Cleanup shaders
+  m_cpuShader.reset();
   m_mainShader.reset();
+  m_fractalShader.reset();
   m_skyboxShader.reset();
   m_postProcessShader.reset();
 
@@ -209,7 +220,8 @@ void Engine::UpdateScene(float dt) {
 
 void Engine::RenderToLayers(int width, int height) {
   // Render each visualizer to its own layer
-  for (auto &layer : m_layers) {
+  for (int i = 0; i < static_cast<int>(LayerIndex::Count); ++i) {
+    auto &layer = m_layers[i];
     auto *viz = layer.GetVisualizer();
     if (!viz)
       continue;
@@ -226,26 +238,41 @@ void Engine::RenderToLayers(int width, int height) {
     int ly = static_cast<int>(fx.transform.y * height);
     int lw = static_cast<int>(fx.transform.width * width);
     int lh = static_cast<int>(fx.transform.height * height);
+    if (lw <= 0 || lh <= 0) {
+      layer.Unbind();
+      continue;
+    }
     glViewport(lx, ly, lw, lh);
 
     // Draw visualizer
-    if (m_mainShader) {
-      m_mainShader->Use();
+    Shader *shaderToUse = m_mainShader.get();
+    if (i == static_cast<int>(LayerIndex::CPU) && m_cpuShader &&
+        m_cpuShader->IsValid()) {
+      shaderToUse = m_cpuShader.get();
+    } else if (i == static_cast<int>(LayerIndex::Network) && m_fractalShader &&
+        m_fractalShader->IsValid()) {
+      shaderToUse = m_fractalShader.get();
+    }
+
+    if (shaderToUse && shaderToUse->IsValid()) {
+      shaderToUse->Use();
 
       // Camera setup
 
       CheckGLError("Before Camera Setup");
 
       float aspect = static_cast<float>(lw) / static_cast<float>(lh);
+      const float fovDegrees =
+          (m_config.fieldOfView > 1.0f) ? m_config.fieldOfView : 45.0f;
       Mat4 projection =
-          Mat4Perspective(45.0f * (kPi / 180.0f), aspect, 0.1f, 100.0f);
+          Mat4Perspective(fovDegrees * (kPi / 180.0f), aspect, 0.1f, 100.0f);
 
       // Rotate camera around center
-      float radius = 5.0f;
+      float radius = m_config.cameraDistance;
       float camX = std::sin(m_cameraAngle * (kPi / 180.0f)) * radius;
       float camZ = std::cos(m_cameraAngle * (kPi / 180.0f)) * radius;
 
-      Vec3 eye{camX, 2.0f, camZ};
+      Vec3 eye{camX, m_config.cameraHeight, camZ};
       Vec3 target{0.0f, 0.0f, 0.0f};
       Vec3 up{0.0f, 1.0f, 0.0f};
 
@@ -257,9 +284,9 @@ void Engine::RenderToLayers(int width, int height) {
         LogMatrix("Projection", projection.m.data());
         LogMatrix("View", view.m.data());
 
-        GLint locView = glGetUniformLocation(m_mainShader->GetId(), "uView");
-        GLint locProj =
-            glGetUniformLocation(m_mainShader->GetId(), "uProjection");
+         GLint locView = glGetUniformLocation(shaderToUse->GetId(), "uView");
+         GLint locProj =
+             glGetUniformLocation(shaderToUse->GetId(), "uProjection");
         std::stringstream ss;
         ss << "Uniform locs - uView: " << locView
            << ", uProjection: " << locProj;
@@ -268,13 +295,13 @@ void Engine::RenderToLayers(int width, int height) {
         loggedMatrices = true;
       }
 
-      m_mainShader->SetMat4("uProjection", projection.m.data());
-      m_mainShader->SetMat4("uView", view.m.data());
-      CheckGLError("After Setting Matrices");
+       shaderToUse->SetMat4("uProjection", projection.m.data());
+       shaderToUse->SetMat4("uView", view.m.data());
+       CheckGLError("After Setting Matrices");
 
-      viz->Draw(m_mainShader.get(), m_sceneTransform);
-      CheckGLError("After Draw");
-    }
+       viz->Draw(shaderToUse, m_sceneTransform);
+       CheckGLError("After Draw");
+     }
 
     layer.Unbind();
   }
@@ -287,15 +314,6 @@ void Engine::CompositeLayers(int width, int height) {
 
   // Composite into final output
   m_compositor.Composite(layers);
-
-  // Blit compositor output to screen (placeholder)
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  glViewport(0, 0, width, height);
-
-  // MAGENTA DEBUG CLEAR
-  glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  CheckGLError("After Clear");
 }
 
 bool Engine::InitializeOpenGLContext(HWND hwnd) {
@@ -351,6 +369,15 @@ bool Engine::InitializeOpenGLContext(HWND hwnd) {
 }
 
 void Engine::SetupShaders() {
+  Logger::LogS("Loading CPU Surreal Shader...");
+  m_cpuShader = std::make_unique<Shader>("assets/shaders/cpu_surreal.vert",
+                                         "assets/shaders/cpu_surreal.frag");
+  if (!m_cpuShader->IsValid()) {
+    Logger::LogS("Failed to load CPU Surreal Shader.");
+  } else {
+    Logger::LogS("CPU Surreal Shader Loaded Successfully.");
+  }
+
   Logger::LogS("Loading Main Shader...");
   m_mainShader = std::make_unique<Shader>("assets/shaders/basic.vert",
                                           "assets/shaders/basic.frag");
@@ -358,6 +385,16 @@ void Engine::SetupShaders() {
     Logger::LogS("Failed to load Main Shader!");
   } else {
     Logger::LogS("Main Shader Loaded Successfully.");
+  }
+
+  Logger::LogS("Loading Fractal Surface Shader...");
+  m_fractalShader =
+      std::make_unique<Shader>("assets/shaders/fractal_surface.vert",
+                               "assets/shaders/fractal_surface.frag");
+  if (!m_fractalShader->IsValid()) {
+    Logger::LogS("Failed to load Fractal Surface Shader.");
+  } else {
+    Logger::LogS("Fractal Surface Shader Loaded Successfully.");
   }
 }
 

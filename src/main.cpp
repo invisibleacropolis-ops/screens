@@ -28,6 +28,7 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   HWND parentHwnd = NULL;
 
   ParseCommandLine(lpCmdLine, mode, parentHwnd);
+  const bool isPreviewMode = (mode == 'p');
 
   if (mode == 'c') {
     Config config = LoadConfig();
@@ -113,8 +114,9 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
       RECT rect;
       GetClientRect(hWnd, &rect);
       engine.Render(rect.right, rect.bottom);
-      // Limit framerate slightly to avoid burning GPU in preview?
-      // For now, let it run (SwapBuffers implicitly vsyncs usually)
+      if (isPreviewMode) {
+        Sleep(16);
+      }
     }
   }
 

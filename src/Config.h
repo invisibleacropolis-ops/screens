@@ -3,7 +3,7 @@
 #include "graphics/PostProcessConfig.h"
 #include <array>
 #include <string>
-
+#include <vector>
 
 enum class QualityTier {
   Low = 0,
@@ -46,6 +46,13 @@ struct Config {
   bool particlesEnabled = true;
   int particleCount = 6000;
 
+  // Fractal-driven visualization controls
+  bool fractalEnabled = true;
+  float fractalResponse = 1.0f;
+  float fractalWarp = 1.0f;
+  float fractalSpeed = 1.0f;
+  int fractalSeed = 1337;
+
   // Scene
   float rotationSpeed = 0.2f;
 
@@ -62,6 +69,10 @@ struct Config {
 
   // Metric Visualizations
   MetricConfig cpuMetric = {true, 0.0f, 1.0f, MeshType::Sphere};
+  int cpuGridSize = 80;     // Resolution of the grid (X/Z)
+  float cpuYOffset = -3.0f; // Vertical Position
+  bool cpuSpectrum = true;  // Use ROYGBIV spectrum
+
   MetricConfig ramMetric = {true, 0.0f, 1.0f, MeshType::Cube};
   MetricConfig diskMetric = {true, 0.0f, 1.0f, MeshType::Ring};
   MetricConfig networkMetric = {true, 0.0f, 1.0f,

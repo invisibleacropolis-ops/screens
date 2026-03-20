@@ -18,6 +18,10 @@ The application follows a **Modular Engine Architecture**, separating platform-s
 
 ## 2. Directory Structure
 
+Directory integrity is enforced by `scripts/verify-ssot-paths.ps1`.
+The script uses a strict repo-root allowlist and rejects any unexpected
+top-level paths or non-SSOT build output locations.
+
 ```text
 src/
 ├── main.cpp                # Entry point & Window management
@@ -86,7 +90,7 @@ Each frame follows this sequence:
     *   `passthrough.vert/frag`: Fullscreen quad rendering (used by Compositor).
 *   **Debugging**:
     *   `DEBUG_OPENGL` define enables comprehensive logging using `DebugUtils.h`.
-    *   Start-up logs written to `screensaver_debug.log`.
+    *   Start-up logs written to `.out/logs/screensaver_debug.log`.
 
 ## 5. Adding a New Feature
 

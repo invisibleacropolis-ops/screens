@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -36,14 +37,16 @@ public:
 
 private:
   Logger() {
-    // Get executable path to store log next to it
+    // Store logs under SSOT output root: <exe dir>/.out/logs/
     char path[MAX_PATH];
     GetModuleFileNameA(NULL, path, MAX_PATH);
-    std::string fullPath(path);
-    std::string dir = fullPath.substr(0, fullPath.find_last_of("\\/"));
-    std::string logPath = dir + "\\screensaver_debug.log";
+    std::filesystem::path exePath(path);
+    std::filesystem::path logDir = exePath.parent_path() / ".out" / "logs";
+    std::error_code ec;
+    std::filesystem::create_directories(logDir, ec);
+    std::filesystem::path logPath = logDir / "screensaver_debug.log";
 
-    m_logFile.open(logPath, std::ios::out | std::ios::trunc);
+    m_logFile.open(logPath.string(), std::ios::out | std::ios::trunc);
   }
 
   ~Logger() {

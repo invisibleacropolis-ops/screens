@@ -74,7 +74,9 @@ private:
   // Subsystems
   std::unique_ptr<SystemMonitor> m_systemMonitor;
   std::unique_ptr<Particles> m_particles;
+  std::unique_ptr<Shader> m_cpuShader;
   std::unique_ptr<Shader> m_mainShader;
+  std::unique_ptr<Shader> m_fractalShader;
   std::unique_ptr<Shader> m_skyboxShader;
   std::unique_ptr<Shader> m_postProcessShader;
 

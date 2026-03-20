@@ -2,6 +2,7 @@
 #pragma once
 
 #include "glad/glad.h"
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -21,12 +22,11 @@ inline void Log(const std::string &message) {
   if (!initialized) {
     char exePath[MAX_PATH];
     GetModuleFileNameA(NULL, exePath, MAX_PATH);
-    logPath = exePath;
-    size_t lastSlash = logPath.find_last_of("\\/");
-    if (lastSlash != std::string::npos) {
-      logPath = logPath.substr(0, lastSlash + 1);
-    }
-    logPath += "screensaver_debug.log";
+    std::filesystem::path basePath(exePath);
+    std::filesystem::path logDir = basePath.parent_path() / ".out" / "logs";
+    std::error_code ec;
+    std::filesystem::create_directories(logDir, ec);
+    logPath = (logDir / "screensaver_debug.log").string();
     initialized = true;
 
     // Clear old log

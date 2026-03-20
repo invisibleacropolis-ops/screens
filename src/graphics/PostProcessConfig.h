@@ -7,9 +7,7 @@ enum class BlendMode {
   Additive, // Add layer colors
   Multiply, // Multiply colors
   Screen,   // Screen blend (1 - (1-a)*(1-b))
-  Overlay,  // Overlay blend
   Normal,   // Standard alpha blend
-  Count
 };
 
 // Layer transform - position and size as normalized values (0.0-1.0)

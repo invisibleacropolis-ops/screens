@@ -121,6 +121,7 @@ const char *BlendModeToString(BlendMode mode) {
     return "multiply";
   case BlendMode::Screen:
     return "screen";
+  // Overlay is intentionally deprecated in runtime compositing.
   case BlendMode::Normal:
     return "normal";
   }
@@ -138,6 +139,9 @@ BlendMode StringToBlendMode(const std::string &str) {
     return BlendMode::Multiply;
   if (lower == "screen")
     return BlendMode::Screen;
+  // Backward compatibility: old configs using overlay map to normal.
+  if (lower == "overlay")
+    return BlendMode::Normal;
   if (lower == "normal")
     return BlendMode::Normal;
   return BlendMode::Normal; // Default
@@ -204,6 +208,16 @@ Config LoadConfig() {
       config.particlesEnabled = ParseBool(value, config.particlesEnabled);
     } else if (key == "particle_count") {
       config.particleCount = ParseInt(value, config.particleCount);
+    } else if (key == "fractal_enabled") {
+      config.fractalEnabled = ParseBool(value, config.fractalEnabled);
+    } else if (key == "fractal_response") {
+      config.fractalResponse = ParseFloat(value, config.fractalResponse);
+    } else if (key == "fractal_warp") {
+      config.fractalWarp = ParseFloat(value, config.fractalWarp);
+    } else if (key == "fractal_speed") {
+      config.fractalSpeed = ParseFloat(value, config.fractalSpeed);
+    } else if (key == "fractal_seed") {
+      config.fractalSeed = ParseInt(value, config.fractalSeed);
     }
     // Scene
     else if (key == "rotation_speed") {
@@ -237,6 +251,12 @@ Config LoadConfig() {
       config.cpuMetric.strength = ParseFloat(value, config.cpuMetric.strength);
     } else if (key == "cpu_mesh") {
       config.cpuMetric.meshType = StringToMeshType(value);
+    } else if (key == "cpu_grid_size") {
+      config.cpuGridSize = ParseInt(value, config.cpuGridSize);
+    } else if (key == "cpu_y_offset") {
+      config.cpuYOffset = ParseFloat(value, config.cpuYOffset);
+    } else if (key == "cpu_spectrum") {
+      config.cpuSpectrum = ParseBool(value, config.cpuSpectrum);
     }
     // RAM Metric
     else if (key == "ram_enabled") {
@@ -381,6 +401,14 @@ bool SaveConfig(const Config &config) {
   file << "particles=" << (config.particlesEnabled ? "true" : "false") << "\n";
   file << "particle_count=" << config.particleCount << "\n\n";
 
+  file << "# Fractal Visualization\n";
+  file << "fractal_enabled=" << (config.fractalEnabled ? "true" : "false")
+       << "\n";
+  file << "fractal_response=" << config.fractalResponse << "\n";
+  file << "fractal_warp=" << config.fractalWarp << "\n";
+  file << "fractal_speed=" << config.fractalSpeed << "\n";
+  file << "fractal_seed=" << config.fractalSeed << "\n\n";
+
   file << "# Scene\n";
   file << "rotation_speed=" << config.rotationSpeed << "\n\n";
 
@@ -401,7 +429,10 @@ bool SaveConfig(const Config &config) {
        << "\n";
   file << "cpu_threshold=" << config.cpuMetric.threshold << "\n";
   file << "cpu_strength=" << config.cpuMetric.strength << "\n";
-  file << "cpu_mesh=" << MeshTypeToString(config.cpuMetric.meshType) << "\n\n";
+  file << "cpu_mesh=" << MeshTypeToString(config.cpuMetric.meshType) << "\n";
+  file << "cpu_grid_size=" << config.cpuGridSize << "\n";
+  file << "cpu_y_offset=" << config.cpuYOffset << "\n";
+  file << "cpu_spectrum=" << (config.cpuSpectrum ? "true" : "false") << "\n\n";
 
   file << "# RAM Metric\n";
   file << "ram_enabled=" << (config.ramMetric.enabled ? "true" : "false")

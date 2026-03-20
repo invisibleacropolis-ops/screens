@@ -17,6 +17,9 @@ set(SOURCES
     src/glad/glad.h
     src/SystemMonitor.cpp
     src/SystemMonitor.h
+    src/fractal/FractalParams.h
+    src/fractal/FractalSignalProcessor.h
+    src/fractal/FractalSignalProcessor.cpp
     src/DiagTest.h
     src/stb_image.h
     src/resource.h
@@ -42,12 +45,20 @@ set(SOURCES
     src/visualizers/CPUVisualizer.h
     src/visualizers/RAMVisualizer.h
     src/visualizers/DiskVisualizer.h
+    src/visualizers/FractalSurfaceVisualizer.h
+    src/visualizers/FractalSurfaceVisualizer.cpp
     # Settings modules
     src/settings/ISettingsPanel.h
     src/settings/SettingsHost.h
+    src/settings/GeneralPanel.h
+    src/settings/GeneralPanel.cpp
     src/settings/VisualEffectsPanel.h
+    src/settings/VisualsPanel.h
+    src/settings/VisualsPanel.cpp
     src/settings/CameraPanel.h
     src/settings/MetricsPanel.h
+    src/settings/MetricsPanelLogic.h
+    src/settings/MetricsPanelLogic.cpp
     src/settings/LayerLayoutPanel.h
     src/settings/LayerFXPanel.h
 )

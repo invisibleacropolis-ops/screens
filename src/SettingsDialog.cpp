@@ -1,10 +1,13 @@
 #include "SettingsDialog.h"
 #include "resource.h"
+#include "settings/GeneralPanel.h"
+#include "settings/MetricsPanelLogic.h"
+#include "settings/VisualsPanel.h"
+#include <array>
 #include <commctrl.h>
 #include <cstdio>
 #include <string>
 #include <vector>
-
 
 #pragma comment(lib, "comctl32.lib")
 
@@ -106,15 +109,19 @@ static const std::vector<int> GROUP_METRICS = {
     IDC_CHECK_CPU_ENABLED,     IDC_SLIDER_CPU_THRESHOLD,
     IDC_STATIC_CPU_THRESHOLD,  IDC_SLIDER_CPU_STRENGTH,
     IDC_STATIC_CPU_STRENGTH,   IDC_COMBO_CPU_MESH,
-    IDC_CHECK_RAM_ENABLED,     IDC_SLIDER_RAM_THRESHOLD,
-    IDC_STATIC_RAM_THRESHOLD,  IDC_SLIDER_RAM_STRENGTH,
-    IDC_STATIC_RAM_STRENGTH,   IDC_COMBO_RAM_MESH,
-    IDC_CHECK_DISK_ENABLED,    IDC_SLIDER_DISK_THRESHOLD,
-    IDC_STATIC_DISK_THRESHOLD, IDC_SLIDER_DISK_STRENGTH,
-    IDC_STATIC_DISK_STRENGTH,  IDC_COMBO_DISK_MESH,
-    IDC_CHECK_NET_ENABLED,     IDC_SLIDER_NET_THRESHOLD,
-    IDC_STATIC_NET_THRESHOLD,  IDC_SLIDER_NET_STRENGTH,
-    IDC_STATIC_NET_STRENGTH,   IDC_COMBO_NET_MESH};
+    IDC_SLIDER_CPU_GRID,       IDC_STATIC_CPU_GRID,
+    IDC_SLIDER_CPU_Y,          IDC_STATIC_CPU_Y,
+    IDC_CHECK_CPU_SPECTRUM,    IDC_LABEL_CPU_GRID,
+    IDC_LABEL_CPU_Y,           IDC_CHECK_RAM_ENABLED,
+    IDC_SLIDER_RAM_THRESHOLD,  IDC_STATIC_RAM_THRESHOLD,
+    IDC_SLIDER_RAM_STRENGTH,   IDC_STATIC_RAM_STRENGTH,
+    IDC_COMBO_RAM_MESH,        IDC_CHECK_DISK_ENABLED,
+    IDC_SLIDER_DISK_THRESHOLD, IDC_STATIC_DISK_THRESHOLD,
+    IDC_SLIDER_DISK_STRENGTH,  IDC_STATIC_DISK_STRENGTH,
+    IDC_COMBO_DISK_MESH,       IDC_CHECK_NET_ENABLED,
+    IDC_SLIDER_NET_THRESHOLD,  IDC_STATIC_NET_THRESHOLD,
+    IDC_SLIDER_NET_STRENGTH,   IDC_STATIC_NET_STRENGTH,
+    IDC_COMBO_NET_MESH};
 
 static const std::vector<int> GROUP_LAYOUT = {
     IDC_COMBO_LAYER_SELECT,  IDC_COMBO_LAYOUT_PRESET,
@@ -290,65 +297,9 @@ static void SaveFXControls(HWND hDlg, int layerIndex) {
 }
 
 static void InitDialogFromConfig(HWND hDlg, const Config &cfg) {
-  // Quality
-  HWND hQuality = GetDlgItem(hDlg, IDC_COMBO_QUALITY);
-  SendMessageW(hQuality, CB_ADDSTRING, 0, (LPARAM)L"Low");
-  SendMessageW(hQuality, CB_ADDSTRING, 0, (LPARAM)L"Medium");
-  SendMessageW(hQuality, CB_ADDSTRING, 0, (LPARAM)L"High");
-  SendMessage(hQuality, CB_SETCURSEL, (int)cfg.quality, 0);
-
-  // General controls
-  SetSliderValueFloat(hDlg, IDC_SLIDER_ROTATION, IDC_STATIC_ROTATION,
-                      cfg.rotationSpeed, 0.0f, 2.0f);
-  CheckDlgButton(hDlg, IDC_CHECK_SKYBOX,
-                 cfg.skyboxEnabled ? BST_CHECKED : BST_UNCHECKED);
-  SetSliderValue(hDlg, IDC_SLIDER_BG_R, IDC_STATIC_BG_R, cfg.bgColorR, 0, 255);
-  SetSliderValue(hDlg, IDC_SLIDER_BG_G, IDC_STATIC_BG_G, cfg.bgColorG, 0, 255);
-  SetSliderValue(hDlg, IDC_SLIDER_BG_B, IDC_STATIC_BG_B, cfg.bgColorB, 0, 255);
-  SetSliderValueFloat(hDlg, IDC_SLIDER_CAM_DIST, IDC_STATIC_CAM_DIST,
-                      cfg.cameraDistance, 5.0f, 25.0f);
-  SetSliderValueFloat(hDlg, IDC_SLIDER_CAM_HEIGHT, IDC_STATIC_CAM_HEIGHT,
-                      cfg.cameraHeight, 0.0f, 15.0f);
-  SetSliderValue(hDlg, IDC_SLIDER_FOV, IDC_STATIC_FOV, (int)cfg.fieldOfView, 30,
-                 90);
-
-  // Visuals
-  CheckDlgButton(hDlg, IDC_CHECK_BLOOM,
-                 cfg.bloomEnabled ? BST_CHECKED : BST_UNCHECKED);
-  CheckDlgButton(hDlg, IDC_CHECK_FXAA,
-                 cfg.fxaaEnabled ? BST_CHECKED : BST_UNCHECKED);
-  SetSliderValueFloat(hDlg, IDC_SLIDER_BLOOM_THRESH, IDC_STATIC_BLOOM_THRESH,
-                      cfg.bloomThreshold, 0.3f, 1.5f);
-  SetSliderValueFloat(hDlg, IDC_SLIDER_BLOOM_STR, IDC_STATIC_BLOOM_STR,
-                      cfg.bloomStrength, 0.0f, 2.0f);
-  SetSliderValueFloat(hDlg, IDC_SLIDER_EXPOSURE, IDC_STATIC_EXPOSURE,
-                      cfg.exposure, 0.5f, 3.0f);
-  CheckDlgButton(hDlg, IDC_CHECK_FOG,
-                 cfg.fogEnabled ? BST_CHECKED : BST_UNCHECKED);
-  SetSliderValueFloat(hDlg, IDC_SLIDER_FOG_DENSITY, IDC_STATIC_FOG_DENSITY,
-                      cfg.fogDensity, 0.0f, 0.2f);
-  CheckDlgButton(hDlg, IDC_CHECK_PARTICLES,
-                 cfg.particlesEnabled ? BST_CHECKED : BST_UNCHECKED);
-  SetSliderValue(hDlg, IDC_SLIDER_PARTICLE_CNT, IDC_STATIC_PARTICLE_CNT,
-                 cfg.particleCount, 500, 10000);
-
-  // Metrics
-  InitMetricControls(hDlg, cfg.cpuMetric, IDC_CHECK_CPU_ENABLED,
-                     IDC_SLIDER_CPU_THRESHOLD, IDC_STATIC_CPU_THRESHOLD,
-                     IDC_SLIDER_CPU_STRENGTH, IDC_STATIC_CPU_STRENGTH,
-                     IDC_COMBO_CPU_MESH);
-  InitMetricControls(hDlg, cfg.ramMetric, IDC_CHECK_RAM_ENABLED,
-                     IDC_SLIDER_RAM_THRESHOLD, IDC_STATIC_RAM_THRESHOLD,
-                     IDC_SLIDER_RAM_STRENGTH, IDC_STATIC_RAM_STRENGTH,
-                     IDC_COMBO_RAM_MESH);
-  InitMetricControls(hDlg, cfg.diskMetric, IDC_CHECK_DISK_ENABLED,
-                     IDC_SLIDER_DISK_THRESHOLD, IDC_STATIC_DISK_THRESHOLD,
-                     IDC_SLIDER_DISK_STRENGTH, IDC_STATIC_DISK_STRENGTH,
-                     IDC_COMBO_DISK_MESH);
-  InitMetricControls(hDlg, cfg.networkMetric, IDC_CHECK_NET_ENABLED,
-                     IDC_SLIDER_NET_THRESHOLD, IDC_STATIC_NET_THRESHOLD,
-                     IDC_SLIDER_NET_STRENGTH, IDC_STATIC_NET_STRENGTH,
-                     IDC_COMBO_NET_MESH);
+  SettingsPanels::InitGeneralTab(hDlg, cfg);
+  SettingsPanels::InitVisualsTab(hDlg, cfg);
+  SettingsPanels::InitMetricsTab(hDlg, cfg);
 
   // Layout Layer Combo
   HWND hLayerSelect = GetDlgItem(hDlg, IDC_COMBO_LAYER_SELECT);
@@ -397,47 +348,9 @@ static void ReadConfigFromDialog(HWND hDlg, Config &cfg) {
   SaveFXControls(hDlg, g_currentFXLayer);
   cfg.layerConfigs = g_tempConfig.layerConfigs;
 
-  cfg.quality = (QualityTier)SendMessage(GetDlgItem(hDlg, IDC_COMBO_QUALITY),
-                                         CB_GETCURSEL, 0, 0);
-
-  cfg.rotationSpeed =
-      GetSliderValueFloat(hDlg, IDC_SLIDER_ROTATION, 0.0f, 2.0f);
-  cfg.skyboxEnabled = IsDlgButtonChecked(hDlg, IDC_CHECK_SKYBOX) == BST_CHECKED;
-  cfg.bgColorR = GetSliderValue(hDlg, IDC_SLIDER_BG_R);
-  cfg.bgColorG = GetSliderValue(hDlg, IDC_SLIDER_BG_G);
-  cfg.bgColorB = GetSliderValue(hDlg, IDC_SLIDER_BG_B);
-  cfg.cameraDistance =
-      GetSliderValueFloat(hDlg, IDC_SLIDER_CAM_DIST, 5.0f, 25.0f);
-  cfg.cameraHeight =
-      GetSliderValueFloat(hDlg, IDC_SLIDER_CAM_HEIGHT, 0.0f, 15.0f);
-  cfg.fieldOfView = (float)GetSliderValue(hDlg, IDC_SLIDER_FOV);
-
-  cfg.bloomEnabled = IsDlgButtonChecked(hDlg, IDC_CHECK_BLOOM) == BST_CHECKED;
-  cfg.fxaaEnabled = IsDlgButtonChecked(hDlg, IDC_CHECK_FXAA) == BST_CHECKED;
-  cfg.bloomThreshold =
-      GetSliderValueFloat(hDlg, IDC_SLIDER_BLOOM_THRESH, 0.3f, 1.5f);
-  cfg.bloomStrength =
-      GetSliderValueFloat(hDlg, IDC_SLIDER_BLOOM_STR, 0.0f, 2.0f);
-  cfg.exposure = GetSliderValueFloat(hDlg, IDC_SLIDER_EXPOSURE, 0.5f, 3.0f);
-  cfg.fogEnabled = IsDlgButtonChecked(hDlg, IDC_CHECK_FOG) == BST_CHECKED;
-  cfg.fogDensity =
-      GetSliderValueFloat(hDlg, IDC_SLIDER_FOG_DENSITY, 0.0f, 0.2f);
-  cfg.particlesEnabled =
-      IsDlgButtonChecked(hDlg, IDC_CHECK_PARTICLES) == BST_CHECKED;
-  cfg.particleCount = GetSliderValue(hDlg, IDC_SLIDER_PARTICLE_CNT);
-
-  ReadMetricControls(hDlg, cfg.cpuMetric, IDC_CHECK_CPU_ENABLED,
-                     IDC_SLIDER_CPU_THRESHOLD, IDC_SLIDER_CPU_STRENGTH,
-                     IDC_COMBO_CPU_MESH);
-  ReadMetricControls(hDlg, cfg.ramMetric, IDC_CHECK_RAM_ENABLED,
-                     IDC_SLIDER_RAM_THRESHOLD, IDC_SLIDER_RAM_STRENGTH,
-                     IDC_COMBO_RAM_MESH);
-  ReadMetricControls(hDlg, cfg.diskMetric, IDC_CHECK_DISK_ENABLED,
-                     IDC_SLIDER_DISK_THRESHOLD, IDC_SLIDER_DISK_STRENGTH,
-                     IDC_COMBO_DISK_MESH);
-  ReadMetricControls(hDlg, cfg.networkMetric, IDC_CHECK_NET_ENABLED,
-                     IDC_SLIDER_NET_THRESHOLD, IDC_SLIDER_NET_STRENGTH,
-                     IDC_COMBO_NET_MESH);
+  SettingsPanels::ReadGeneralTab(hDlg, cfg);
+  SettingsPanels::ReadVisualsTab(hDlg, cfg);
+  SettingsPanels::ReadMetricsTab(hDlg, cfg);
 }
 
 // Update slider label when value changes
@@ -494,135 +407,55 @@ static INT_PTR CALLBACK SettingsDialogProc(HWND hDlg, UINT message,
     HWND hSlider = (HWND)lParam;
     int id = GetDlgCtrlID(hSlider);
 
-    // Simple exhaustive switch for now, matching existing logic
-    // (Collapsed for brevity, logic follows InitDialog calls)
-    float minVal = 0, maxVal = 100;
-    bool isFloat = false;
-    int labelId = 0;
-
-    // ... Mapping Logic ...
-    // Note: Since I am replacing the file, I must reconstruct this mapping.
-    // Quality of life: I will use a helper structure or just a huge switch.
-    // The previous implementation used a switch with a struct. I'll stick to
-    // that.
-
-    struct SliderInfo {
-      int labelId;
-      bool isFloat;
-      float min;
-      float max;
-    };
-    SliderInfo info = {0, false, 0, 100};
-
-    switch (id) {
-    case IDC_SLIDER_ROTATION:
-      info = {IDC_STATIC_ROTATION, true, 0.0f, 2.0f};
-      break;
-    case IDC_SLIDER_BG_R:
-      info = {IDC_STATIC_BG_R, false, 0, 255};
-      break;
-    case IDC_SLIDER_BG_G:
-      info = {IDC_STATIC_BG_G, false, 0, 255};
-      break;
-    case IDC_SLIDER_BG_B:
-      info = {IDC_STATIC_BG_B, false, 0, 255};
-      break;
-    case IDC_SLIDER_CAM_DIST:
-      info = {IDC_STATIC_CAM_DIST, true, 5.0f, 25.0f};
-      break;
-    case IDC_SLIDER_CAM_HEIGHT:
-      info = {IDC_STATIC_CAM_HEIGHT, true, 0.0f, 15.0f};
-      break;
-    case IDC_SLIDER_FOV:
-      info = {IDC_STATIC_FOV, false, 30, 90};
-      break;
-
-    case IDC_SLIDER_BLOOM_THRESH:
-      info = {IDC_STATIC_BLOOM_THRESH, true, 0.3f, 1.5f};
-      break;
-    case IDC_SLIDER_BLOOM_STR:
-      info = {IDC_STATIC_BLOOM_STR, true, 0.0f, 2.0f};
-      break;
-    case IDC_SLIDER_EXPOSURE:
-      info = {IDC_STATIC_EXPOSURE, true, 0.5f, 3.0f};
-      break;
-    case IDC_SLIDER_FOG_DENSITY:
-      info = {IDC_STATIC_FOG_DENSITY, true, 0.0f, 0.2f};
-      break;
-    case IDC_SLIDER_PARTICLE_CNT:
-      info = {IDC_STATIC_PARTICLE_CNT, false, 500, 10000};
-      break;
-
-    case IDC_SLIDER_CPU_THRESHOLD:
-      info = {IDC_STATIC_CPU_THRESHOLD, true, 0.0f, 100.0f};
-      break;
-    case IDC_SLIDER_CPU_STRENGTH:
-      info = {IDC_STATIC_CPU_STRENGTH, true, 0.0f, 2.0f};
-      break;
-    case IDC_SLIDER_RAM_THRESHOLD:
-      info = {IDC_STATIC_RAM_THRESHOLD, true, 0.0f, 100.0f};
-      break;
-    case IDC_SLIDER_RAM_STRENGTH:
-      info = {IDC_STATIC_RAM_STRENGTH, true, 0.0f, 2.0f};
-      break;
-    case IDC_SLIDER_DISK_THRESHOLD:
-      info = {IDC_STATIC_DISK_THRESHOLD, true, 0.0f, 100.0f};
-      break;
-    case IDC_SLIDER_DISK_STRENGTH:
-      info = {IDC_STATIC_DISK_STRENGTH, true, 0.0f, 2.0f};
-      break;
-    case IDC_SLIDER_NET_THRESHOLD:
-      info = {IDC_STATIC_NET_THRESHOLD, true, 0.0f, 100.0f};
-      break;
-    case IDC_SLIDER_NET_STRENGTH:
-      info = {IDC_STATIC_NET_STRENGTH, true, 0.0f, 2.0f};
-      break;
-
-    case IDC_SLIDER_LAYER_X:
-      info = {IDC_STATIC_LAYER_X, true, 0.0f, 1.0f};
-      break;
-    case IDC_SLIDER_LAYER_Y:
-      info = {IDC_STATIC_LAYER_Y, true, 0.0f, 1.0f};
-      break;
-    case IDC_SLIDER_LAYER_W:
-      info = {IDC_STATIC_LAYER_W, true, 0.0f, 1.0f};
-      break;
-    case IDC_SLIDER_LAYER_H:
-      info = {IDC_STATIC_LAYER_H, true, 0.0f, 1.0f};
-      break;
-
-    case IDC_SLIDER_FX_BLOOM_INT:
-      info = {IDC_STATIC_FX_BLOOM_INT, true, 0.0f, 2.0f};
-      break;
-    case IDC_SLIDER_FX_BLOOM_THRESH:
-      info = {IDC_STATIC_FX_BLOOM_THRESH, true, 0.0f, 2.0f};
-      break;
-    case IDC_SLIDER_FX_BLOOM_RAD:
-      info = {IDC_STATIC_FX_BLOOM_RAD, true, 1.0f, 20.0f};
-      break;
-    case IDC_SLIDER_FX_GLOW_INT:
-      info = {IDC_STATIC_FX_GLOW_INT, true, 0.0f, 2.0f};
-      break;
-    case IDC_SLIDER_FX_GLOW_SIZE:
-      info = {IDC_STATIC_FX_GLOW_SIZE, true, 1.0f, 10.0f};
-      break;
-    case IDC_SLIDER_FX_CHROM_OFFSET:
-      info = {IDC_STATIC_FX_CHROM_OFFSET, true, 0.0f, 10.0f};
-      break;
-    case IDC_SLIDER_FX_DISTORT_AMT:
-      info = {IDC_STATIC_FX_DISTORT_AMT, true, 0.0f, 1.0f};
-      break;
-    case IDC_SLIDER_FX_TRAIL_FADE:
-      info = {IDC_STATIC_FX_TRAIL_FADE, true, 0.0f, 1.0f};
-      break;
-    case IDC_SLIDER_FX_OPACITY:
-      info = {IDC_STATIC_FX_OPACITY, true, 0.0f, 1.0f};
-      break;
+    if (SettingsPanels::HandleGeneralSliders(hDlg, id) ||
+        SettingsPanels::HandleVisualSliders(hDlg, id) ||
+        SettingsPanels::HandleMetricsSliders(hDlg, id)) {
+      return TRUE;
     }
 
-    if (info.labelId != 0) {
-      UpdateSliderLabel(hDlg, id, info.labelId, info.isFloat, info.min,
-                        info.max);
+    switch (id) {
+    case IDC_SLIDER_LAYER_X:
+      UpdateSliderLabel(hDlg, id, IDC_STATIC_LAYER_X, true, 0.0f, 1.0f);
+      break;
+    case IDC_SLIDER_LAYER_Y:
+      UpdateSliderLabel(hDlg, id, IDC_STATIC_LAYER_Y, true, 0.0f, 1.0f);
+      break;
+    case IDC_SLIDER_LAYER_W:
+      UpdateSliderLabel(hDlg, id, IDC_STATIC_LAYER_W, true, 0.0f, 1.0f);
+      break;
+    case IDC_SLIDER_LAYER_H:
+      UpdateSliderLabel(hDlg, id, IDC_STATIC_LAYER_H, true, 0.0f, 1.0f);
+      break;
+    case IDC_SLIDER_FX_BLOOM_INT:
+      UpdateSliderLabel(hDlg, id, IDC_STATIC_FX_BLOOM_INT, true, 0.0f, 2.0f);
+      break;
+    case IDC_SLIDER_FX_BLOOM_THRESH:
+      UpdateSliderLabel(hDlg, id, IDC_STATIC_FX_BLOOM_THRESH, true, 0.0f, 2.0f);
+      break;
+    case IDC_SLIDER_FX_BLOOM_RAD:
+      UpdateSliderLabel(hDlg, id, IDC_STATIC_FX_BLOOM_RAD, true, 1.0f, 20.0f);
+      break;
+    case IDC_SLIDER_FX_GLOW_INT:
+      UpdateSliderLabel(hDlg, id, IDC_STATIC_FX_GLOW_INT, true, 0.0f, 2.0f);
+      break;
+    case IDC_SLIDER_FX_GLOW_SIZE:
+      UpdateSliderLabel(hDlg, id, IDC_STATIC_FX_GLOW_SIZE, true, 1.0f, 10.0f);
+      break;
+    case IDC_SLIDER_FX_CHROM_OFFSET:
+      UpdateSliderLabel(hDlg, id, IDC_STATIC_FX_CHROM_OFFSET, true, 0.0f,
+                        10.0f);
+      break;
+    case IDC_SLIDER_FX_DISTORT_AMT:
+      UpdateSliderLabel(hDlg, id, IDC_STATIC_FX_DISTORT_AMT, true, 0.0f, 1.0f);
+      break;
+    case IDC_SLIDER_FX_TRAIL_FADE:
+      UpdateSliderLabel(hDlg, id, IDC_STATIC_FX_TRAIL_FADE, true, 0.0f, 1.0f);
+      break;
+    case IDC_SLIDER_FX_OPACITY:
+      UpdateSliderLabel(hDlg, id, IDC_STATIC_FX_OPACITY, true, 0.0f, 1.0f);
+      break;
+    default:
+      break;
     }
     return TRUE;
   }
